@@ -1,0 +1,26 @@
+#myArea {
+	background-color: #EEE;
+	border: 1px solid #404040;
+}
+
+.heading {
+	font-family: Cambria, serif;
+	font-size: 25px;
+	font-style: normal;
+	font-weight: normal;
+	text-transform: normal;
+	letter-spacing: normal;
+	line-height: 1.2em;
+	margin: 15px;
+}
+
+.content {
+	font-family: Cambria, serif;
+	font-size: 16px;
+	font-style: italic;
+	font-weight: normal;
+	text-transform: normal;
+	letter-spacing: normal;
+	line-height: 1.5em;
+	margin: 15px;
+}
