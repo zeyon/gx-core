@@ -299,7 +299,7 @@ gx.ui.Table = new Class({
 
 			this.fireEvent('addData', data)
 			data.each(function (row, index) {
-				if ( !isObject(row) )
+				if ( typeOf(row) != 'object' )
 					return;
 
 				var cols = root.options.structure(row, index, root);
