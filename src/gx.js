@@ -10,10 +10,30 @@
  * @license http://opensource.org/licenses/gpl-license.php GNU Public License
  */
 
-var gx = {version: '1.100'};
+var gx = {
+	properties: {
+		version: '1.100'
+	},
+	core: {},
+	ui:   {}
+};
 
-gx.core = {};
-gx.ui = {};
+// Calculate Browser scroll bar width
+window.addEvent('domready', function() {
+	var div = new Element('div', {
+		'style': 'width: 50px; position:absolute; left: -200px; top: -200px;'
+	});
+	div.inject(document.body, 'top');
+	var d = new Element('div', {
+		'html': '&nbsp;'
+	});
+	div.adopt(d);
+
+	var w1 = d.getStyle('width').toInt();
+	div.setStyle('overflow-y', 'scroll');
+	gx.properties.scrollWidth = (w1 - d.getStyle('width').toInt());
+	div.dispose();
+});
 
 /* ========================== Utility Functions ========================== */
 

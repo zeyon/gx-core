@@ -43,7 +43,7 @@ gx.ui.Tabbox = new Class({
 			if ( isFunction(this.options.onChange) )
 				this.addEvent('change', this.options.onChange);
 
-			if ( isString(this.options.show) )
+			if ( typeOf(this.options.show) == 'string' )
 				this.openTab(this.options.show);
 			else if(typeof this.options.show == 'number') {
 				var index = this.getIndexName(this.options.show);
@@ -130,11 +130,11 @@ gx.ui.Tabbox = new Class({
 	addTab: function (name, title, content) {
 		var root = this;
 		try {
-			if ( isString(content) )
+			if ( typeOf(content) == 'string' )
 				content = new Element('div', {'html': content});
 
-			if ( isString(name) && isString(title) && isNode(content) ) {
-				if ( !isNode(this._tabs[name]) ) {
+			if ( typeOf(name) == 'string' && typeOf(title) == 'string' && typeOf(content) == 'element' ) {
+				if ( typeOf(this._tabs[name]) != 'element' ) {
 					var tab = root.buildTab(name, title);
 					content = root.buildContent(content);
 					content.setStyle('display', 'none');

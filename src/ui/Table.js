@@ -188,7 +188,7 @@ gx.ui.Table = new Class({
 			// this._cols[0].th.removeClass('b_l');
 			this._colspan = cols.length;
 			// Add one more col to header which automatically scale with of scroll bar width
-			this._scrollBarCol = new Element('th', {'class': 'b_l', 'style': 'width: ' + gx.Browser.scrollBar.width + 'px; padding: 0px;'});
+			this._scrollBarCol = new Element('th', {'class': 'b_l', 'style': 'width: ' + gx.properties.scrollWidth + 'px; padding: 0px;'});
 			tr.adopt(this._scrollBarCol);
 
 		} catch(e) {
@@ -294,7 +294,7 @@ gx.ui.Table = new Class({
 		var odd = false;
 
 		try {
-			if ( !isArray(data) )
+			if (typeOf(data) != 'array')
 				return this;
 
 			this.fireEvent('addData', data)
@@ -310,7 +310,7 @@ gx.ui.Table = new Class({
 					cols = cols.row;
 				}
 
-				if ( !isArray(cols) )
+				if (typeOf(cols) != 'array')
 					return;
 
 				root.fireEvent('beforeRowAdd', row);
