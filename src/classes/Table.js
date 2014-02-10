@@ -294,12 +294,12 @@ gx.ui.Table = new Class({
 		var odd = false;
 
 		try {
-			if ( !isArray(data) )
+			if ( typeOf(data) != 'array' )
 				return this;
 
 			this.fireEvent('addData', data)
 			data.each(function (row, index) {
-				if ( !isObject(row) )
+				if ( typeOf(row) != 'object' )
 					return;
 
 				var cols = root.options.structure(row, index, root);
@@ -310,7 +310,7 @@ gx.ui.Table = new Class({
 					cols = cols.row;
 				}
 
-				if ( !isArray(cols) )
+				if ( typeOf(cols) != 'array' )
 					return;
 
 				root.fireEvent('beforeRowAdd', row);

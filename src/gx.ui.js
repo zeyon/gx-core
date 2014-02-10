@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * @class gx.ui.Container
  * @description Abstract class for container elements
