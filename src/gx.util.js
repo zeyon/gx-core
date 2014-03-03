@@ -101,18 +101,24 @@ gx.util = {
 		}
 	},
 
+	/**
+	 * @method gx.util.parseResult
+	 * @description Parses a typical API result
+	 * @param {sting} json
+	 * @return {mixed}
+	 */
 	parseResult: function(json) {
 		var res = JSON.decode(json);
-		var t = $type(res);
+		var t = typeOf(res);
 		if ( t == 'object' ) {
 			if ( res.error != null )
-				msg.show('Server error: ' + String(res.error).htmlSpecialChars(), 'error');
+				throw 'Server error: ' + String(res.error);
 			else if ( res.result == null )
-				msg.show('Undefined result', 'error');
+				throw 'Undefined result';
 			else
 				return res.result;
 		} else {
-			msg.show('parseResult: Invalid data type: ' + String(t).htmlSpecialChars(), 'error');
+			throw 'Invalid data type: ' + t;
 		}
 
 		return null;
@@ -123,7 +129,6 @@ gx.util = {
 	 * @description Helper function to parse an element tree
 	 * @param {object} obj The object to parse
 	 */
-
 	Parse: function(obj) {
 		switch (typeOf(obj)) {
 			case 'object':
