@@ -86,18 +86,34 @@ module.exports = function(grunt) {
 					'docs/index.html': 'docs/index.tpl.html'
 				}
 			}
+		},
+		jsvalidate: {
+			options:{
+				globals: {},
+				esprimaOptions: {},
+				verbose: false
+			},
+			targetName:{
+				files:{
+					files: ['src/*.js', 'src/classes/*.js'],
+				}
+			}
 		}
 	});
 
+	// grunt.loadNpmTasks('grunt-contrib-less');
 	grunt.loadNpmTasks('grunt-contrib-uglify');
 	grunt.loadNpmTasks('grunt-contrib-concat');
-	// grunt.loadNpmTasks('grunt-contrib-less');
 	grunt.loadNpmTasks('grunt-contrib-watch');
+	grunt.loadNpmTasks('grunt-contrib-jshint')
+	grunt.loadNpmTasks('grunt-jsvalidate');
 	grunt.loadNpmTasks('grunt-include-replace');
 	grunt.loadNpmTasks('grunt-include-source');
 
-	grunt.registerTask('default', ['concat', 'uglify']);
-	grunt.registerTask('dev',     ['includeSource:js', 'includereplace:demo', 'watch']);
-	grunt.registerTask('demo',    ['includeSource:js', 'includereplace:demo']);
-	grunt.registerTask('readme',  ['includereplace:readme']);
+
+	grunt.registerTask('default' , ['concat', 'uglify']);
+	grunt.registerTask('dev'     , ['includeSource:js', 'includereplace:demo', 'watch']);
+	grunt.registerTask('demo'    , ['includeSource:js', 'includereplace:demo']);
+	grunt.registerTask('readme'  , ['includereplace:readme']);
+	grunt.registerTask('validate', ['jsvalidate', 'jshint']);
 };
