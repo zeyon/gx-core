@@ -37,6 +37,99 @@ gx.util = {
 		}
 	},
 
+	formatTime: function(mins) {
+		if (gx.util.isString(mins)) {
+			if (mins.match(/^[0-9]{1,}:[0-9]{2}$/))
+				return mins;
+			if (mins.match(/^[0-9]{1,}:[0-9]{2,}$/)) {
+				mins = mins.replace(/[^0-9]/g, '');
+				return mins.replace(/([0-9]{2})$/, ':$1');
+			}
+
+			mins = parseInt(mins.replace(/[^0-9]/g));
+		}
+
+		var prefix = '';
+		if (mins == null)
+			return '0:00';
+		if (mins < 0) {
+			mins = -mins;
+			prefix = '-';
+		}
+		var minutes =  mins % 60;
+		var hours = Math.floor(mins / 60);
+		return prefix + hours + ':' + (minutes < 10 ? '0' : '') + minutes;
+	},
+
+	getMinutes: function(ts) {
+		ts = ts.replace(/[^0-9:]/, '');
+		var parts = ts.replace(/[^0-9:]/, '').split(':');
+
+		if (parts.length == 1)
+			return parseInt(parts.pop());
+
+		return parseInt(parts.shift()) * 60 + parseInt(parts.shift());
+	},
+
+	initFieldTime: function(input) {
+		input.addEvent('blur', function() {
+			this.set('value', gx.util.formatTime(this.get('value')));
+		});
+		input.getMinutes = function() {
+			return gx.util.getMinutes(input.get('value'));
+		};
+		input.set('value', gx.util.formatTime(input.get('value')));
+		return input;
+	},
+
+	formatNum: function(num, decpoint, separator, deccount) {
+		if (decpoint == null)
+			decpoint = '.';
+		if (separator == null)
+			separator = ',';
+		if (!gx.util.isNumber(deccount))
+			deccount = 2;
+
+		if (gx.util.isString(num)) {
+			var reg = new RegExp('[^0-9'+decpoint+']', 'g');
+			num = parseFloat(
+				num.replace(new RegExp('[^0-9'+decpoint+']'), '')
+				   .replace(decpoint, '.')
+			);
+		}
+
+		num = Math.round(num * Math.pow(10, deccount)).toString();
+		for (var i = num.length ; i <= deccount ; i++)
+			num = '0' + num;
+		var pos = num.length - deccount;
+
+		if (deccount > 0)
+			num = num.substring(0, pos) + decpoint + num.substring(pos);
+
+		for (var i = pos-3 ; i > 0 ; i -= 3)
+			num = num.substring(0, i) + separator + num.substring(i);
+
+		return num;
+	},
+
+	getNumber: function(num, decpoint) {
+		return parseFloat(
+			num.replace(new RegExp('[^0-9'+decpoint+']'), '')
+			   .replace(decpoint, '.')
+		);
+	},
+
+	initFieldFloat: function(input, decpoint, separator, deccount) {
+		input.addEvent('blur', function() {
+			this.set('value', gx.util.formatNum(this.get('value'), decpoint, separator, deccount));
+		});
+		input.getNumber = function() {
+			return gx.util.getNumber(input.get('value'), decpoint);
+		};
+		input.set('value', gx.util.formatNum(input.get('value'), decpoint, separator, deccount));
+		return input;
+	},
+
 	/**
 	 * @method gx.util.setEleContentByType
 	 * @description Adopt or set content to type depending on its type.
