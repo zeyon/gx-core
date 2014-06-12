@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * @class gx.ui.Table
  * @description Creates a dynamic select box, which dynamically loads the contents from a remote URL.
@@ -22,410 +20,458 @@
  * @option {bool} onClick when a row is clicked
  * @option {bool} onFilter when a filter is set
  * @option {bool} onRowAdd when a row is added
- * @option {bool} onStart when the table is being rendered
- * @option {bool} onComplete when the table is rendered completely
  */
 gx.ui.Table = new Class({
-	gx: 'gx.ui.Table',
-	Extends: gx.ui.Container,
-	options: {
-		'cols'           : [
-			{ 'label': 'Column 1', 'id': 'col1', 'width': '20px', 'filter': 'asc' },
-			{ 'label': 'Column 2', 'id': 'col2' }
-		],
-		'structure'      : function (row, index) {
-			return [
-				row.col1,
-				{ 'label': row.col2, 'className': row.col2class }
-			]
-		},
-		'stopPropagation': false,
-		'height'         : false,
-		'data'           : []
-	},
-	_theme: {
-		'asc': 'asc',
-		'desc': 'desc',
-		'unfiltered': '',
-		'th': 'th',
-		'filter': 'filter',
-		'table_body': 'view fixed',
-		'table_head': 'view',
-		'filter_elem': 'div'
-	},
-	_cols: [],
-	_filter: false,
-	_colspan: 0,
-	_scrollBarCol: false,
+    gx: 'gx.ui.Table',
+    Extends: gx.ui.Container,
+    options: {
+        'cols': [
+            {'label': 'Column 1', 'id': 'col1', 'width': '20px', 'filter': 'asc'},
+            {'label': 'Column 2', 'id': 'col2'}
+        ],
+        'structure': function(row, index) {
+            return [
+                row.col1,
+                {'label': row.col2, 'className': row.col2class}
+            ];
+        },
+        'data'        : [],
+        'scroll'      : true,
+        'autoresize'  : true,
+        'selectable'  : false,
+        'checkOnClick': true,
+        'sortable'    : false,
+        'height'      : '400px',
+        'syncDelay'   : 100
+    },
+    _cols: [],
+    _rows: [],
+    _filter: false,
+    _colspan: 0,
+    _scrollBarCol: false,
+    _theme: {
+        filterAsc   : 'asc',
+        filterDesc  : 'desc',
+        unfiltered  : '',
+        th          : 'th',
+        filter      : 'filter',
+        filterElem  : 'div',
+        mainTable   : 'tbl',
+        mainThead   : '',
+        mainTheadRow: 'tbl_head',
+        mainTbody   : '',
+        wrapper     : '',
+        emptyCol    : '',
+        headerTable : 'tbl',
+        tbodyTr     : 'tbl_row',
+        oddRow      : 'bg',
+        colCheck    : 'tbl_chk'
+    },
+    initialize: function(display, options) {
+        var root = this;
+        try {
+            this.parent(display, options);
+            //this.addEvent('complete', this.adoptSizeToHead.bind(this));
 
-	initialize: function (display, options) {
-		var root = this;
-		try {
-			this.parent(display, options);
+            this._display.table    = new Element('table', {'class': this._theme.mainTable});
+            this._display.thead    = new Element('thead', {'class': this._theme.mainThead});
+            this._display.theadRow = new Element('tr', {'class': this._theme.mainTheadRow});
+            this._display.tbody    = new Element('tbody', {'class': this._theme.mainTbody});
 
-			// backward compatibility
-			this.theme = this._theme;
+            this._display.root.adopt(
+                this._display.table.adopt([
+                    this._display.thead.adopt(
+                        this._display.theadRow
+                    ),
+                    this._display.tbody
+                ])
+            );
 
-			this.addEvent('complete', this.adoptSizeToHead.bind(this));
+            this.buildCols();
 
-			this.build();
+            if (this.options.scroll) {
+                this._display.header = new Element('table', {'class': this._theme.headerTable});
+                this._display.header.inject(this._display.root, 'top');
+                this._display.header.adopt(this._display.thead);
+                this._display.wrapper = new Element('div', {'class': this._theme.wrapper, 'styles': {'overflow-y': 'scroll', 'height': this.options.height}});
+                this._display.wrapper.wraps(this._display.table);
 
-			if ( this.options.height )
-				this.setHeight(this.options.height);
+                this._display.emptyCol = new Element('th', {'class': this._theme.emptyCol});
+                this._display.theadRow.adopt(this._display.emptyCol);
 
-			this.buildCols(this.options.cols);
-			this.setData(this.options.data);
+                this.addEvent('display', function() {
+                    this.syncColWith.delay(this.options.syncDelay, this);
+                }.bind(this));
 
-			window.addEvent('resize', this.adoptSizeToHead.bind(this));
-		} catch(e) {
-			gx.util.Console('gx.ui.Table->initialize', e.message);
-		}
-	},
+                if (this.options.autoresize) {
+                    window.addEvent('resize', function() {
+                        this.syncColWith();
+                    }.bind(this));
+                }
+                this.addEvent('complete', function() {
+                    this.syncColWith();
+                }.bind(this));
+            }
 
-	/**
-	 * @method build
-	 * @description Builds the core components
-	 */
-	build: function () {
-		var root = this;
+            if (this.options.selectable && this.options.checkOnClick) {
+                this.addEvent('click', function(row) {
+                    if (event.target == row.checkbox)
+                        return;
+                    row.checkbox.checked = !row.checkbox.checked;
+                }.bind(this));
+            }
 
-		try {
-			this._display.root.addClass('gxComTable');
-			this._display.hiddenTableHead = new Element('thead', { 'class': this.theme.table_head });
-			this._display.tbody = new Element('tbody');
+            this.setData(this.options.data);
 
-			this._display.thead = new Element('thead');
+            //window.addEvent('resize', this.adoptSizeToHead.bind(this));
+        } catch(e) {
+            e.message = 'gx.ui.Table->initialize: ' + e.message;
+            throw e;
+        }
+    },
 
-			this._display.table = new Element('table', { 'class': this.theme.table_body })
-				.adopt(
-					this._display.hiddenTableHead,
-					this._display.tbody
-				);
+    /**
+     * @method syncColWidth
+     * @description Synchronize the column width
+     */
+    syncColWith: function() {
+        if (!this.options.scroll)
+            return;
 
-			if ( this.options.simpleTable ) {
-				this._display.root.adopt(this._display.table);
-			} else {
-				this._display.hiddenTableHead.hide();
-				this._display.tableDiv = new Element('div', {'style': 'overflow-y:scroll;'})
-					.adopt(this._display.table);
-				this._display.root.adopt(
-					new Element('table', { 'class': this.theme.table_head })
-						.adopt(this._display.thead),
-					this._display.tableDiv
-				);
-			}
-		} catch(e) {
-			gx.util.Console('gx.ui.Table->build', e.message);
-		}
-	},
+        var scrollWidth = this._display.header.getSize().x - this._display.table.getSize().x;
+        this._display.emptyCol.setStyle('width', scrollWidth);
+        // this._display.emptyCol.setStyle('background', 'red');
 
-	/**
-	 * @method buildFilterIndicator
-	 * @description Adds an indicator object to the column
-	 * @param {object} col
-	 * @return {object} Column with indicator object
-	 */
-	buildFilterIndicator: function (col) {
-		var root = this;
-		col.indicator = new Element(this.theme.filter_elem, {'class': this.theme.filter});
-		col.indicator.inject(col.th, 'top');
-		col.th.addEvent('click', function () {
-			root.setSort(col);
-		});
-		return col;
-	},
+        var row = this._display.tbody.getElement('tr');
+        if (row == null)
+            return;
 
-	/**
-	 * @method buildCols
-	 * @description Builds the columns
-	 * @param {array} cols An array of columns
-	 */
-	buildCols: function (cols) {
-		this.options.cols = cols;
+        var th = this._display.theadRow.getElements('th');
+        row.getElements('td').each(function(td, index) {
+            if (!td.getSize().x)
+                return;
+            if (th[index] != null)
+                th[index].setStyle('width', td.getSize().x);
+        }.bind(this));
+    },
 
-		var root = this;
-		try {
-			var tr = new Element('tr');
-			root._display.thead.empty();
-			root._display.thead.adopt(tr);
+    /**
+     * @method buildFilterIndicator
+     * @description Adds an indicator object to the column
+     * @param {object} col
+     * @return {object} Column with indicator object
+     */
+    buildFilterIndicator: function (col) {
+        col.indicator = new Element(this._theme.filterElem, {'class': this._theme.filter});
+        col.indicator.inject(col.th, 'top');
+        col.th.set('data-sort', '-' + col.id);
+        col.th.addEvent('click', function() {
+            this.setSort(col);
+        }.bind(this));
+    },
 
-			cols.each(function (col) {
-				col.th = new Element('th', { 'class': root.theme.th });
+    /**
+     * @method buildCols
+     * @description Builds the columns
+     * @param {array} cols An array of columns
+     */
+    buildCols: function(cols) {
+        try {
+            if (this.options.selectable) {
+                this._display.checkall = new Element('input', {'type': 'checkbox'});
+                this._display.checkall.addEvent('click', function() {
+                    this.toggleSelect();
+                }.bind(this));
+                this.options.cols = [{
+                    'label'     : this._display.checkall,
+                    'filterable': false,
+                    'className' : this._theme.colCheck
+                }].append(this.options.cols);
+            }
 
-				if ( col.properties )
-					col.th.set(col.properties);
+            this.options.cols.each(function(col) {
+                col.th = new Element('th');
+                switch (typeOf(col.label)) {
+                    case 'object' :
+                        col.th.adopt(__(col.label));
+                        break;
+                    case 'element':
+                        col.th.adopt(col.label);
+                        break;
+                    default:
+                        col.th.set('html', col.label);
+                        break;
+                }
 
-				switch ( typeOf(col.label) ) {
-					case 'object' :
-						col.th.adopt(__(col.label));
-						break;
-					case 'element':
-						col.th.adopt(col.label);
-						break;
-					default:
-						col.th.set('html', col.label);
-						break;
-				}
-				if ( col.filter != null || col.filterable != false ) {
-					col = root.buildFilterIndicator(col);
-				}
-				if ( col.width != null )
-					col.th.setStyle('width', col.width);
-				if ( col.filter != null )
-					root.setSort(col, col.filter, 1);
+                if ((col.filter != null || col.filterable != false) && this.options.sortable) {
+                    this.buildFilterIndicator(col);
+                }
 
-				tr.adopt(col.th);
-				root._cols.push(col);
-			});
+                if (col['text-align'] != null)
+                    col.th.setStyle('text-align', col['text-align']);
 
-			this._display.hiddenTableHead
-				.empty()
-				.adopt(this._display.thead.clone().getChildren());
+                if (col.width != null)
+                    col.th.setStyle('width', col.width);
+                if (col.className != null)
+                    col.th.set('class', col.className);
+                if (col.filter != null)
+                    this.setSort(col, col.filter, 1);
 
-			if ( !this.options.simpleTable )
-				this._display.table.setStyle('margin-top', -1 * this._display.hiddenTableHead.getStyle('height').toInt());
+                this._display.theadRow.adopt(col.th);
+                this._cols.push(col);
+            }.bind(this));
+            this._colspan = this.options.cols.length;
+            // Add one more col to header which automatically scale with of scroll bar width
+            // Set default width 16px in case no data will be add at first
+            // Erase when data will be add to get automatically scaled.
+            //this._scrollBarCol = new Element('th', {'class': ''});
+            this._display.theadRow.adopt(this._scrollBarCol);
+        } catch(e) {
+            e.message = 'gx.ui.Table->buildCols: ' + e.message;
+            throw e;
+        }
 
-			// this._cols[0].th.removeClass('b_l');
-			this._colspan = cols.length;
-			// Add one more col to header which automatically scale with of scroll bar width
-			this._scrollBarCol = new Element('th', {'class': 'b_l', 'style': 'width: ' + gx.Browser.scrollBar.width + 'px; padding: 0px;'});
-			tr.adopt(this._scrollBarCol);
+        return this;
+    },
 
-		} catch(e) {
-			gx.util.Console('gx.ui.Table->buildCols', e.message);
-		}
+    /**
+     * @method addData
+     * @description Adds the specified data to the table
+     * @param {array} data The data to add
+     */
+    addData: function(data) {
+        var odd = false;
+        try {
+            if ( typeOf(data) != 'array' )
+                return this;
 
-		return this;
-	},
+            this.fireEvent('addData', data);
+            data.each(function(row, index) {
+                if ( typeOf(row) != 'object' )
+                    return;
 
-	/**
-	 * @method setHeight
-	 * @description Sets the table height
-	 * @param {int} height
-	 * @returns Returns this instance (for method chaining).
-	 * @type gx.ui.Table
-	 */
-	setHeight: function (height) {
-		( this._display.tableDiv || this._display.table ).setStyle('height', height);
-		return this;
-	},
+                var rowProperties = {};
+                var cols = this.options.structure(row, index);
 
-	/**
-	 * @method setSort
-	 * @description Sorts the table according to the specified column and mode
-	 * @param {object} col The column that is decisive for the sorting
-	 * @param {string} mode The sorting order: 'asc' or 'desc'
-	 * @param noEvent
-	 * @returns Returns this instance (for method chaining).
-	 * @type gx.ui.Table
-	 */
-	setSort: function (col, mode, noEvent) {
-		var root = this;
-		try {
-			if ( this._filter ) {
-				if ( this._filter.id == col.id ) {
-					if ( (this._filter.mode == 'asc' && mode == null) || (mode != null && mode == 'desc') ) {
-						this._filter.indicator.removeClass(this.theme.asc);
-						this._filter.indicator.addClass(this.theme.desc);
-						this._filter.mode = 'desc';
-					} else {
-						this._filter.indicator.removeClass(this.theme.desc);
-						this._filter.indicator.addClass(this.theme.asc);
-						this._filter.mode = 'asc';
-					}
-					if ( noEvent == null )
-						this.fireEvent('filter', col);
+                if (gx.util.isObject(cols) && cols.row ) {
+                    if (cols.properties)
+                        rowProperties = cols.properties;
+                    cols = cols.row;
+                }
 
-					return this;
+                if (!gx.util.isArray(cols))
+                    return;
 
-				} else {
-					this._filter.indicator.removeClass(this.theme.asc);
-					this._filter.indicator.removeClass(this.theme.desc);
+                // Add checkboxes
+                if (this.options.selectable) {
+                    row.checkbox = new Element('input', {
+                        'type'   : 'checkbox',
+                        'value'  : row.ID,
+                        'checked': row.checked
+                    });
+                    cols = [{
+                        'label': row.checkbox,
+                        'className': this._theme.colCheck
+                    }].append(cols);
+                }
 
-				}
-			}
+                row.tr = new Element('tr', rowProperties)
+                    .addClass(this._theme.tbodyTr);
 
-			if ( mode == null || mode != 'desc' )
-				mode = 'asc';
+                this.fireEvent('beforeRowAdd', [row, index] );
 
-			this._filter = col;
-			this._filter.indicator.addClass(this.theme[mode]);
-			this._filter.mode = mode;
-			if ( noEvent == null )
-				this.fireEvent('filter', col);
+                var clickable = (row.clickable == null || row.clickable != false || (this.options.cols[index] != null && this.options.cols[index].clickable != false));
 
-		} catch(e) {
-			gx.util.Console('gx.ui.Table->setSort', e.message);
-		}
+                if (odd && this._theme.oddRow)
+                    row.tr.addClass(this._theme.oddRow);
+                odd = !odd;
 
-		return this;
-	},
+                cols.each(function(col, index) {
+                    clickable = clickable ? !(this.options.cols[index] != null && this.options.cols[index].clickable == false) : true;
+                    var td = new Element('td');
 
-	/**
-	 * @method getFilter
-	 * @description Returns the filter object {mode: 'asc'|'desc', id: COLID}
-	 */
-	getFilter: function () {
-		return this._filter;
-	},
+                    if ( this.options.cols[index].width != null )
+                        td.setStyle('max-width', this.options.cols[index].width);
 
-	/**
-	 * @method setData
-	 * @description Sets the list data. Calls empty() and then addData(data)
-	 * @param {array} data The list data to set
-	 * @returns Returns this instance (for method chaining).
-	 * @type gx.ui.Table
-	 */
-	setData: function (data) {
-		this.empty();
-		this.fireEvent('setData', data)
-		return this.addData(data);
-	},
+                    switch ( typeOf(col) ) {
+                        case 'object' :
+                            col = Object.clone(col);
 
-	/**
-	 * @method addData
-	 * @description Adds the specified data to the table
-	 * @param {array} data The data to add
-	 * @returns Returns this instance (for method chaining).
-	 * @type gx.ui.Table
-	 */
-	addData: function (data) {
-		var root = this;
-		var odd = false;
+                            var labelType = typeOf(col.label);
+                            if ( (labelType === 'element') || (labelType === 'textnode') )
+                                td.adopt(col.label);
+                            else
+                                td.set('html', col.label);
 
-		try {
-			if ( typeOf(data) != 'array' )
-				return this;
+                            clickable = ( (col.clickable == null) || (col.clickable != false) );
+                            if ( col.className != null )
+                                td.addClass(col.className);
 
-			this.fireEvent('addData', data)
-			data.each(function (row, index) {
-				if ( typeOf(row) != 'object' )
-					return;
+                            delete col.label;
+                            delete col.clickable;
+                            delete col.className;
 
-				var cols = root.options.structure(row, index, root);
-				var rowProperties = {};
+                            td.set(col);
 
-				if ( (typeof(cols) === 'object') && cols.row ) {
-					Object.merge(rowProperties, cols.properties);
-					cols = cols.row;
-				}
+                            break;
 
-				if ( typeOf(cols) != 'array' )
-					return;
+                        case 'element':
+                        case 'textnode':
+                            td.adopt(col);
+                            break;
+                        default:
+                            td.set('html', col);
+                            break;
+                    }
 
-				root.fireEvent('beforeRowAdd', row);
-				row.tr = new Element('tr', rowProperties)
-					.addClass('em');
-				var clickable = (row.clickable == null || row.clickable != false);
+                    if ( this._cols[index]['text-align'] != null )
+                        td.setStyle('text-align', this._cols[index]['text-align']);
 
-				if ( odd )
-					row.tr.addClass('bg');
-				odd = !odd;
+                    if (clickable) {
+                        td.addEvent('click', function(event) {
+                            this.fireEvent('click', [ row, event, index ] );
+                        }.bind(this));
+                        td.addEvent('dblclick', function(event) {
+                            this.fireEvent('dblclick', [ row, event, index ] );
+                        }.bind(this));
+                    }
+                    row.tr.adopt(td);
+                }.bind(this));
+                this._display.tbody.adopt(row.tr);
+                this._rows.push(row);
+                this.fireEvent('rowAdd', [row, index] );
+                this.fireEvent('afterRowAdd', [row, index] );
+            }.bind(this));
+            //if( data.length > 0 ) this._scrollBarCol.erase('style');
+            this.fireEvent('complete', data);
+        } catch(e) {
+            e.message = 'gx.ui.Table->addData: ' + e.message;
+            throw e;
+        }
 
-				cols.each(function (col, index) {
-					clickable = clickable ? !(root.options.cols[index] != null && root.options.cols[index].clickable == false) : true;
-					var td = new Element('td');
-					var width = false;
+        return this;
+    },
 
-					if ( (width = root.options.cols[index].width) )
-						td.setStyle('width', width);
+    /**
+     * @method setData
+     * @description Sets the list data. Calls empty() and then addData(data)
+     * @param {array} data The list data to set
+     */
+    setData: function(data) {
+        this._rows = [];
+        this.empty();
+        this.fireEvent('setData', data)
+        return this.addData(data);
+    },
 
-					switch (typeOf(col)) {
-						case 'object' :
-							var label = col.label;
-							if ( label instanceof Element )
-								td.adopt(label);
-							else
-								td.set('html', label);
+    /**
+     * @method setSort
+     * @description Sorts the table according to the specified column and mode
+     * @param {object} col The column that is decisive for the sorting
+     * @param {string} mode The sorting order: 'asc' or 'desc'
+     * @param noEvent
+     */
+    setSort: function(col, mode, noEvent) {
+        if ( !this._filter )
+            this._filter = {};
 
-							col = Object.clone(col);
+        if ( mode == null ) {
+            if ( col.th.get('data-sort').indexOf('-') > -1 ) {
+                mode = 'asc';
+                var prefix = '';
+            } else {
+                mode = 'desc';
+                var prefix = '-';
+            }
+        }
 
-							clickable = (col.clickable == null || col.clickable != false);
-							if ( col.className != null )
-								td.addClass(col.className);
+        if (this._filter.indicator != null && this._theme.filterDesc && this._theme.filterAsc) {
+            this._filter.indicator.removeClass(this._theme.filterDesc);
+            this._filter.indicator.removeClass(this._theme.filterAsc);
+        }
 
-							delete col.label;
-							delete col.clickable;
-							delete col.className;
+        if ( mode == 'asc' ) {
+            this._filter.mode = 'desc';
+            var opPrefix = '-';
+            if (this._theme.filterDesc)
+                col.indicator.addClass(this._theme.filterDesc);
+        } else {
+            this._filter.mode = 'asc';
+            var opPrefix = '';
+            if (this._theme.filterAsc)
+                col.indicator.addClass(this._theme.filterAsc);
+        }
 
-							td.set(col);
+        for ( var i = 0; i < this._cols.length; i++ ) {
+            var currentCol = this._cols[i];
+            currentCol.th.removeClass('act');
+            currentCol.th.set('data-sort', opPrefix + currentCol.id);
+        }
 
-							break;
+        col.th.set('data-sort', prefix + col.id);
+        col.th.addClass('act');
 
-						case 'element':
-							td.adopt(col);
-							break;
+        this._filter.indicator = col.indicator;
+        this._filter.th = col.th;
+        this._filter.id = col.id;
 
-						default:
-							td.set('html', col);
-							break;
-					}
+        if (noEvent == null)
+            this.fireEvent('filter', [col, this._filter.mode]);
 
-					if ( clickable ) {
-						td.addEvent('click', function (event) {
-							if ( root.options.stopPropagation )
-								event.stopPropagation();
+        return this;
+    },
 
-							root.fireEvent('click', [ row, event ]);
-						});
-						td.addEvent('dblclick', function (event) {
-							if ( root.options.stopPropagation )
-								event.stopPropagation();
+    /**
+     * @method getFilter
+     * @description Returns the filter object {mode: 'asc'|'desc', id: COLID}
+     */
+    getFilter: function() {
+        return this._filter;
+    },
 
-							root.fireEvent('dblclick', [ row, event ]);
-						});
-					}
-					row.tr.adopt(td);
-				});
+    /**
+     * @method empty
+     * @description Clears the table body
+     */
+    empty: function() {
+        this._display.tbody.empty();
+        return this;
+    },
 
-				root._display.tbody.adopt(row.tr);
-				root.fireEvent('rowAdd', row);
-				root.fireEvent('afterRowAdd', row);
-			});
-			this.fireEvent('complete', data);
+    getSelection: function() {
+        var selection = [];
+        this._rows.each(function(row) {
+            if (row.checkbox == null || !row.checkbox.checked)
+                return;
 
-		} catch(e) {
-			gx.util.Console('gx.ui.Table->addData', e.message);
-		}
+            selection.push(row);
+        }.bind(this))
 
-		return this;
-	},
+        return selection;
+    },
 
-	/**
-	 * @method empty
-	 * @description Clears the table body
-	 * @returns Returns this instance (for method chaining).
-	 * @type gx.ui.Table
-	 */
-	empty: function () {
-		this._display.tbody.empty();
-		return this;
-	},
+    toggleSelect: function() {
+        if (!this.options.selectable)
+            return;
 
-	/**
-	 * @method adoptSizeToHead
-	 * @description Sets the cell widths of the header with the width of the cell in the first row
-	 * @returns Returns this instance (for method chaining).
-	 * @type gx.ui.Table
-	 */
-	adoptSizeToHead: function () {
-		var row = this._display.tbody.getElement('tr');
-		if ( row == null )
-			return this;
+        var deselect = true;
+        this._rows.each(function(row, index) {
+            if (!row.checkbox.checked)
+                deselect = false;
+        });
+        this._rows.each(function(row) {
+            row.checkbox.checked = !deselect;
+        });
+        this._display.checkall.checked = !deselect;
+    },
 
-		row.getElements('td').each( function (ele) {
-			// Firefox and possibly other browsers yield the CSS dimensions in
-			// percent if these were specified as such using inline styles.
-			// See also for a demo of this behavior: http://jsfiddle.net/2jwBQ/
-			var w = (
-				(document.defaultView && document.defaultView.getComputedStyle)
-				? document.defaultView.getComputedStyle(ele, null).getPropertyValue('width')
-				: ele.getComputedSize({ 'styles': [], 'mode': 'horizontal' }).width.toInt()
-			);
-			if ( this._cols[ele.cellIndex] )
-				this._cols[ele.cellIndex].th.setStyle('width', w);
-		}.bind(this));
+    checkall: function(value) {
+        if (value !== false)
+            value = true;
 
-		return this;
-	}
+        this._rows.each(function(row) {
+            row.checkbox.checked = value;
+        });
+        this._display.checkall.checked = value;
+    }
 });
