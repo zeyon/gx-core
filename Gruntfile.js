@@ -26,34 +26,16 @@ module.exports = function(grunt) {
 				dest: 'dist/<%= pkg.name %>.js'
 			}
 		},
-		/*
-		less: {
-			dist: {
-				options: {
-					cleancss: true,
-					paths: ['src/less/*.less']
-				},
-				files: {
-					"dist/<%= pkg.name %>.css": "src/less/gx.less"
-				}
-			}
-		},
-		*/
 		watch: {
 			js: {
-				files: ['src/*.js'],
-				tasks: ['concat'],
+				files: [
+                    'src/*.js',
+                    'src/classes/*.js'
+                ],
+				tasks: ['concat', 'uglify'],
 				options: {
 					// livereload: true,
 				}
-			},
-			css: {
-				files: ['src/less/*.less'],
-				tasks: ['less']
-			},
-			docs: {
-				files: ['docs/demos/*.js'],
-				tasks: ['includeSource:js', 'includereplace:demo']
 			}
 		},
 		includereplace: {
@@ -105,15 +87,12 @@ module.exports = function(grunt) {
 	grunt.loadNpmTasks('grunt-contrib-uglify');
 	grunt.loadNpmTasks('grunt-contrib-concat');
 	grunt.loadNpmTasks('grunt-contrib-watch');
-	grunt.loadNpmTasks('grunt-contrib-jshint')
+	grunt.loadNpmTasks('grunt-contrib-jshint');
 	grunt.loadNpmTasks('grunt-jsvalidate');
 	grunt.loadNpmTasks('grunt-include-replace');
 	grunt.loadNpmTasks('grunt-include-source');
 
-
 	grunt.registerTask('default' , ['concat', 'uglify']);
-	grunt.registerTask('dev'     , ['includeSource:js', 'includereplace:demo', 'watch']);
-	grunt.registerTask('demo'    , ['includeSource:js', 'includereplace:demo']);
-	grunt.registerTask('readme'  , ['includereplace:readme']);
+	grunt.registerTask('dev'     , ['concat', 'uglify', 'watch']);
 	grunt.registerTask('validate', ['jsvalidate', 'jshint']);
 };
