@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * @class gx.ui.Collapse
  * @description Collapses a specified element

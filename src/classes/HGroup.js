@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * @class gx.ui.HGroup
  * @description Horizontal Grouping Component
