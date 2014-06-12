@@ -50,7 +50,7 @@ gx.util = {
 		}
 
 		var prefix = '';
-		if (mins == null)
+		if (mins == null || isNaN(mins))
 			return '0:00';
 		if (mins < 0) {
 			mins = -mins;
@@ -72,6 +72,9 @@ gx.util = {
 	},
 
 	initFieldTime: function(input) {
+		if (input == undefined)
+			input = new Element('input', {'type': 'text'});
+
 		input.addEvent('blur', function() {
 			this.set('value', gx.util.formatTime(this.get('value')));
 		});
@@ -97,6 +100,8 @@ gx.util = {
 				   .replace(decpoint, '.')
 			);
 		}
+		if (isNaN(num))
+			num = 0;
 
 		num = Math.round(num * Math.pow(10, deccount)).toString();
 		for (var i = num.length ; i <= deccount ; i++)
@@ -120,6 +125,9 @@ gx.util = {
 	},
 
 	initFieldFloat: function(input, decpoint, separator, deccount) {
+		if (input == undefined)
+			input = new Element('input', {'type': 'text'});
+
 		input.addEvent('blur', function() {
 			this.set('value', gx.util.formatNum(this.get('value'), decpoint, separator, deccount));
 		});
@@ -269,6 +277,8 @@ gx.util = {
 			case 'string':
 				return document.createTextNode(obj);
 			case 'element':
+			case 'textnode':
+			case 'whitespace':
 				return obj;
 		}
 
