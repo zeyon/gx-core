@@ -34,13 +34,14 @@ gx.ui.Tabbox = new Class({
 			this.build();
 
 			var frames = this.options.frames;
-			if ( isArray(frames) ) {
-				frames.each(function (item) {
+			if ( frames instanceof Array ) {
+				for (var i = 0; i < frames.length; i++) {
+					var item = frames[i];
 					root.addTab(item.name, item.title, item.content);
-				});
+				}
 			}
 
-			if ( isFunction(this.options.onChange) )
+			if ( typeof(this.options.onChange) === 'function' )
 				this.addEvent('change', this.options.onChange);
 
 			if ( typeOf(this.options.show) == 'string' )
@@ -51,6 +52,10 @@ gx.ui.Tabbox = new Class({
 					this.openTab(index);
 			}
 		} catch(e) { gx.util.Console('gx.ui.Tabbox->initialize', e.message); }
+	},
+
+	isNode: function (obj) {
+		return ( (typeof(obj) === 'object') && (obj.nodeType == 1) );
 	},
 
 	/**
@@ -168,7 +173,7 @@ gx.ui.Tabbox = new Class({
 	 */
 	closeTab: function (name) {
 		try {
-			if ( isNode(this._tabs[name]) ) {
+			if ( this.isNode(this._tabs[name]) ) {
 				this._tabs[name].removeClass(this.class_active);
 				this._frames[name].setStyle('display', 'none');
 				this._active = false;
@@ -183,7 +188,7 @@ gx.ui.Tabbox = new Class({
 	 */
 	openTab: function (name, options) {
 		try {
-			if ( !isNode(this._tabs[name]) )
+			if ( !this.isNode(this._tabs[name]) )
 				return this;
 
 			if ( this._active )
@@ -211,7 +216,7 @@ gx.ui.Tabbox = new Class({
 	 * @param {String} name The name of the tab to hide.
 	 */
 	hideTab: function (name) {
-		if ( isNode(this._tabs[name]) )
+		if ( this.isNode(this._tabs[name]) )
 			this._tabs[name].hide();
 
 		return this;
@@ -223,7 +228,7 @@ gx.ui.Tabbox = new Class({
 	 * @param {String} name The name of the tab to unhide.
 	 */
 	revealTab: function (name) {
-		if ( isNode(this._tabs[name]) )
+		if ( this.isNode(this._tabs[name]) )
 			this._tabs[name].show();
 
 		return this;
