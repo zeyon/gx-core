@@ -135,8 +135,18 @@ gx.ui.Tabbox = new Class({
 	addTab: function (name, title, content) {
 		var root = this;
 		try {
-			if ( typeOf(content) == 'string' )
-				content = new Element('div', {'html': content});
+			switch ( typeOf(content) ) {
+				case 'string':
+					content = new Element('div', { 'html': content });
+					break;
+
+				case 'element':
+					break;
+
+				default:
+					content = $(content);
+					break;
+			}
 
 			if ( typeOf(name) == 'string' && typeOf(title) == 'string' && typeOf(content) == 'element' ) {
 				if ( typeOf(this._tabs[name]) != 'element' ) {
