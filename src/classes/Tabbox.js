@@ -37,7 +37,7 @@ gx.ui.Tabbox = new Class({
 			if ( frames instanceof Array ) {
 				for (var i = 0; i < frames.length; i++) {
 					var item = frames[i];
-					root.addTab(item.name, item.title, item.content);
+					root.addTab(item.name, item.title, item.content, item.properties);
 				}
 			}
 
@@ -131,8 +131,10 @@ gx.ui.Tabbox = new Class({
 	 * @param {string} name The name of the tab
 	 * @param {string} title The title of the tab
 	 * @param {string|node} content The content of the tab
+	 * @param {object} tabElementProperties Optional. Properties to apply to
+	 *     the DOM element using {@link Element.prototype.set()}.
 	 */
-	addTab: function (name, title, content) {
+	addTab: function (name, title, content, tabElementProperties) {
 		var root = this;
 		try {
 			switch ( typeOf(content) ) {
@@ -151,6 +153,10 @@ gx.ui.Tabbox = new Class({
 			if ( typeOf(name) == 'string' && typeOf(title) == 'string' && typeOf(content) == 'element' ) {
 				if ( typeOf(this._tabs[name]) != 'element' ) {
 					var tab = root.buildTab(name, title);
+
+					if ( tabElementProperties )
+						tab.set(tabElementProperties);
+
 					content = root.buildContent(content);
 					content.setStyle('display', 'none');
 					this._frames[name] = content;
