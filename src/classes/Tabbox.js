@@ -213,7 +213,7 @@ gx.ui.Tabbox = new Class({
 			this._active = name;
 			this._tabs[name].addClass(this.class_active);
 			this._frames[name].setStyle('display', 'block');
-			this.fireEvent('change', [name, options]);
+			this.fireEvent('change', [ name, options, this ]);
 
 		} catch(e) {
 			gx.util.Console('gx.ui.Tabbox->openTab', e.message);
