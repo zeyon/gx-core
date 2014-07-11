@@ -94,7 +94,7 @@ gx.ui.Tabbox = new Class({
 	buildTab: function (name, title) {
 		var root = this;
 
-		var link = new Element('a', {'html': title.replace(/ /g, '&nbsp;')});
+		var link = new Element('a', {'html': String(title).replace(/ /g, '&nbsp;')});
 		var tab = new Element('th');
 		tab.adopt(link);
 		tab.inject(this._display.tabfull, 'before');
@@ -180,6 +180,37 @@ gx.ui.Tabbox = new Class({
 	 */
 	getTabName: function () {
 		return this._active;
+	},
+
+	/**
+	 * Sets a tab's title.
+	 *
+	 * @param {String} name The tab's name.
+	 * @param {String} title The title to set.
+	 * @returns {gx.ui.Tabbox}
+	 * @see this.setTabObjectTitle()
+	 */
+	setTabTitle: function (name, title) {
+		if ( this.isNode(this._tabs[name]) )
+			this.setTabObjectTitle(this._tabs[name], title);
+
+		return this;
+	},
+
+	/**
+	 * Sets the title of a tab object. Override this if you implement a custom {@link this.buildTab()}.
+	 *
+	 * @todo !!! Maybe it is better to create a custom class for tabs that is supplied on instantiation of this class.
+	 * @param {object} tabObject
+	 * @param {String} title The title to set.
+	 * @returns {gx.ui.Tabbox}
+	 */
+	setTabObjectTitle: function (tabObject, title) {
+		var a = tabObject.getElement('>a:first-child');
+		if ( a )
+			a.set('html', String(title).replace(/ /g, '&nbsp;'));
+
+		return this;
 	},
 
 	/**
