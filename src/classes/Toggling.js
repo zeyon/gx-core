@@ -1,7 +1,6 @@
 /**
  * @class gx.ui.Toggling
  * @description Generic class to handle any css state toggling class component.
- * @extends gx.ui.Toggling
  *
  * @param {element|string} display The root display element
  * @param {object} options The root display element
@@ -14,6 +13,11 @@
  * @event stateDeactivated Closed the app menu.
  * @event stateChanged     Fired additionally to the above.
  *
+ * @author Sebastian Glonner <sebastian.glonner@zeyon.net>
+ * @version 1.00
+ * @package Gx
+ * @copyright Copyright (c) 2010, Peter Haider
+ * @license http://opensource.org/licenses/gpl-license.php GNU Public License
  */
 gx.ui.Toggling = new Class({
 	gx: 'gx.ui.Toggling',
@@ -31,16 +35,16 @@ gx.ui.Toggling = new Class({
   initialize: function(display, options) {
     this.setOptions(options);
 
-    this._display = this._ui = {};
+    this._ui = {};
 
-    this._display.root = (
+    this._ui.root = (
       typeOf(display) === 'element' ?
       display :
       new Element('div')
     );
 
     if (this.options.rootClass)
-      this._display.root.addClass(this.options.rootClass);
+      this._ui.root.addClass(this.options.rootClass);
 
     this._state = !this.options.initState;
     this.toggle();
