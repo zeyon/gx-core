@@ -71,6 +71,10 @@ gx.ui.Toggling = new Class({
     this.fireEvent('stateChanged', [this._state, this]);
   },
 
+  getState: function() {
+    return this._state;
+  },
+
   toElement: function() {
     return this._ui.root;
   }
