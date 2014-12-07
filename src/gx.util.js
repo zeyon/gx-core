@@ -56,8 +56,33 @@ gx.util = {
 				ele.empty();
 				ele.adopt(__(content));
 				break;
+			case 'array':
+				ele.empty();
+				ele.adopt(content);
+				break;
 		}
 		return ele;
+	},
+
+	adoptByType: function(ele, content) {
+		switch (typeOf(content)) {
+			case 'string':
+				ele.appendText(content);
+				break;
+			case 'object':
+				ele.adopt(__(content));
+				break;
+			case 'array':
+				for ( var i = 0, l = content.length; i < l; i++)
+					this.adoptByType(ele, content[i]);
+				break;
+			// case 'element':
+			default:
+				ele.adopt(content);
+				break;
+		}
+		return ele;
+
 	},
 
 	/**
@@ -137,9 +162,12 @@ gx.util = {
 					return obj.display();
 
 				obj.tag = obj.tag == null ? 'div' : obj.tag;
-				var elem = new Element(obj.tag);
+				var elem = new Element(obj.tag), children, childrenTemp;
 				for (var prop in obj) {
 					switch (prop) {
+						case '_adopt':
+							this.adoptByType(elem, obj._adopt);
+							break;
 						case 'styles':
 							elem.setStyles(obj.styles);
 							break;
@@ -153,6 +181,16 @@ gx.util = {
 							elem.adopt(gx.util.Parse(obj.child));
 							break;
 						case 'children':
+							children = obj.children;
+							if ( typeOf(children) === 'array' ) {
+								childrenTemp = [];
+								for ( var iCh = 0, lCh = children.length; iCh < lCh; iCh++) {
+									childrenTemp.push(gx.util.Parse(children[iCh]));
+								}
+								elem.adopt(childrenTemp);
+								break;
+							}
+
 							var names = [];
 							for (var name in obj.children) {
 								var child = gx.util.Parse(obj['children'][name]);
