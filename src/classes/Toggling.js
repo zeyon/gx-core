@@ -52,9 +52,9 @@ gx.ui.Toggling = new Class({
 
   toggle: function() {
     if (!this._state)
-      this.activate();
+      this.activate.apply(this, arguments);
     else
-      this.deactivate();
+      this.deactivate.apply(this, arguments);
   },
 
   deactivate: function() {
