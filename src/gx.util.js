@@ -37,6 +37,17 @@ gx.util = {
 		}
 	},
 
+	attemptConvertionWith: function(obj, key) {
+		if ( typeof obj !== 'object')
+			return obj;
+
+		var f = obj[key];
+		if ( typeof f === 'function' )
+			return f.call(obj);
+
+		return obj;
+	},
+
 	/**
 	 * @method gx.util.setEleContentByType
 	 * @description Adopt or set content to type depending on its type.
