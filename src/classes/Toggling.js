@@ -57,18 +57,23 @@ gx.ui.Toggling = new Class({
       this.deactivate.apply(this, arguments);
   },
 
-  deactivate: function() {
+  deactivate: function(dontFireEvents) {
     this._state = false;
     this._ui.root.removeClass(this.options.stateClass);
-    this.fireEvent('stateDeactivated', [this]);
-    this.fireEvent('stateChanged', [this._state, this]);
+
+    if ( dontFireEvents !== true ) {
+      this.fireEvent('stateDeactivated', [this]);
+      this.fireEvent('stateChanged', [this._state, this]);
+    }
   },
 
-  activate: function() {
+  activate: function(dontFireEvents) {
     this._state = true;
     this._ui.root.addClass(this.options.stateClass);
-    this.fireEvent('stateActivated', [this]);
-    this.fireEvent('stateChanged', [this._state, this]);
+    if ( dontFireEvents !== true ) {
+      this.fireEvent('stateActivated', [this]);
+      this.fireEvent('stateChanged', [this._state, this]);
+    }
   },
 
   getState: function() {
