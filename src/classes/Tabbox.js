@@ -34,13 +34,14 @@ gx.ui.Tabbox = new Class({
 			this.build();
 
 			var frames = this.options.frames;
-			if ( isArray(frames) ) {
-				frames.each(function (item) {
-					root.addTab(item.name, item.title, item.content);
-				});
+			if ( frames instanceof Array ) {
+				for (var i = 0; i < frames.length; i++) {
+					var item = frames[i];
+					root.addTab(item.name, item.title, item.content, item.properties);
+				}
 			}
 
-			if ( isFunction(this.options.onChange) )
+			if ( typeof(this.options.onChange) === 'function' )
 				this.addEvent('change', this.options.onChange);
 
 			if ( typeOf(this.options.show) == 'string' )
@@ -51,6 +52,10 @@ gx.ui.Tabbox = new Class({
 					this.openTab(index);
 			}
 		} catch(e) { gx.util.Console('gx.ui.Tabbox->initialize', e.message); }
+	},
+
+	isNode: function (obj) {
+		return ( (typeof(obj) === 'object') && (obj.nodeType == 1) );
 	},
 
 	/**
@@ -89,7 +94,7 @@ gx.ui.Tabbox = new Class({
 	buildTab: function (name, title) {
 		var root = this;
 
-		var link = new Element('a', {'html': title.replace(/ /g, '&nbsp;')});
+		var link = new Element('a', {'html': String(title).replace(/ /g, '&nbsp;')});
 		var tab = new Element('th');
 		tab.adopt(link);
 		tab.inject(this._display.tabfull, 'before');
@@ -126,16 +131,32 @@ gx.ui.Tabbox = new Class({
 	 * @param {string} name The name of the tab
 	 * @param {string} title The title of the tab
 	 * @param {string|node} content The content of the tab
+	 * @param {object} tabElementProperties Optional. Properties to apply to
+	 *     the DOM element using {@link Element.prototype.set()}.
 	 */
-	addTab: function (name, title, content) {
+	addTab: function (name, title, content, tabElementProperties) {
 		var root = this;
 		try {
-			if ( typeOf(content) == 'string' )
-				content = new Element('div', {'html': content});
+			switch ( typeOf(content) ) {
+				case 'string':
+					content = new Element('div', { 'html': content });
+					break;
+
+				case 'element':
+					break;
+
+				default:
+					content = $(content);
+					break;
+			}
 
 			if ( typeOf(name) == 'string' && typeOf(title) == 'string' && typeOf(content) == 'element' ) {
 				if ( typeOf(this._tabs[name]) != 'element' ) {
 					var tab = root.buildTab(name, title);
+
+					if ( tabElementProperties )
+						tab.set(tabElementProperties);
+
 					content = root.buildContent(content);
 					content.setStyle('display', 'none');
 					this._frames[name] = content;
@@ -162,13 +183,44 @@ gx.ui.Tabbox = new Class({
 	},
 
 	/**
+	 * Sets a tab's title.
+	 *
+	 * @param {String} name The tab's name.
+	 * @param {String} title The title to set.
+	 * @returns {gx.ui.Tabbox}
+	 * @see this.setTabObjectTitle()
+	 */
+	setTabTitle: function (name, title) {
+		if ( this.isNode(this._tabs[name]) )
+			this.setTabObjectTitle(this._tabs[name], title);
+
+		return this;
+	},
+
+	/**
+	 * Sets the title of a tab object. Override this if you implement a custom {@link this.buildTab()}.
+	 *
+	 * @todo !!! Maybe it is better to create a custom class for tabs that is supplied on instantiation of this class.
+	 * @param {object} tabObject
+	 * @param {String} title The title to set.
+	 * @returns {gx.ui.Tabbox}
+	 */
+	setTabObjectTitle: function (tabObject, title) {
+		var a = tabObject.getElement('>a:first-child');
+		if ( a )
+			a.set('html', String(title).replace(/ /g, '&nbsp;'));
+
+		return this;
+	},
+
+	/**
 	 * @method closeTab
 	 * @description Closes the tab with the given name
 	 * @param {string} name The name of the tab
 	 */
 	closeTab: function (name) {
 		try {
-			if ( isNode(this._tabs[name]) ) {
+			if ( this.isNode(this._tabs[name]) ) {
 				this._tabs[name].removeClass(this.class_active);
 				this._frames[name].setStyle('display', 'none');
 				this._active = false;
@@ -183,7 +235,7 @@ gx.ui.Tabbox = new Class({
 	 */
 	openTab: function (name, options) {
 		try {
-			if ( !isNode(this._tabs[name]) )
+			if ( !this.isNode(this._tabs[name]) )
 				return this;
 
 			if ( this._active )
@@ -192,7 +244,7 @@ gx.ui.Tabbox = new Class({
 			this._active = name;
 			this._tabs[name].addClass(this.class_active);
 			this._frames[name].setStyle('display', 'block');
-			this.fireEvent('change', [name, options]);
+			this.fireEvent('change', [ name, options, this ]);
 
 		} catch(e) {
 			gx.util.Console('gx.ui.Tabbox->openTab', e.message);
@@ -211,7 +263,7 @@ gx.ui.Tabbox = new Class({
 	 * @param {String} name The name of the tab to hide.
 	 */
 	hideTab: function (name) {
-		if ( isNode(this._tabs[name]) )
+		if ( this.isNode(this._tabs[name]) )
 			this._tabs[name].hide();
 
 		return this;
@@ -223,7 +275,7 @@ gx.ui.Tabbox = new Class({
 	 * @param {String} name The name of the tab to unhide.
 	 */
 	revealTab: function (name) {
-		if ( isNode(this._tabs[name]) )
+		if ( this.isNode(this._tabs[name]) )
 			this._tabs[name].show();
 
 		return this;

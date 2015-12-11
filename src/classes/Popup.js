@@ -1,3 +1,5 @@
+'use strict';
+
 /**
  * @class gx.ui.Popup
  * @description Displays a message box or status bar.

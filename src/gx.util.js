@@ -37,6 +37,17 @@ gx.util = {
 		}
 	},
 
+	attemptConvertionWith: function(obj, key) {
+		if ( typeof obj !== 'object')
+			return obj;
+
+		var f = obj[key];
+		if ( typeof f === 'function' )
+			return f.call(obj);
+
+		return obj;
+	},
+
 	formatTime: function(mins) {
 		if (gx.util.isString(mins)) {
 			if (mins.match(/^[0-9]{1,}:[0-9]{2}$/))
@@ -161,6 +172,27 @@ gx.util = {
 		return ele;
 	},
 
+	adoptByType: function(ele, content) {
+		switch (typeOf(content)) {
+			case 'string':
+				ele.appendText(content);
+				break;
+			case 'object':
+				ele.adopt(__(content));
+				break;
+			case 'array':
+				for ( var i = 0, l = content.length; i < l; i++)
+					this.adoptByType(ele, content[i]);
+				break;
+			// case 'element':
+			default:
+				ele.adopt(content);
+				break;
+		}
+		return ele;
+
+	},
+
 	/**
 	 * @method gx.util.printf
 	 * @description Inserts a single or multiple values into a string
@@ -238,9 +270,12 @@ gx.util = {
 					return obj.display();
 
 				obj.tag = obj.tag == null ? 'div' : obj.tag;
-				var elem = new Element(obj.tag);
+				var elem = new Element(obj.tag), children, childrenTemp;
 				for (var prop in obj) {
 					switch (prop) {
+						case '_adopt':
+							this.adoptByType(elem, obj._adopt);
+							break;
 						case 'styles':
 							elem.setStyles(obj.styles);
 							break;
@@ -254,6 +289,16 @@ gx.util = {
 							elem.adopt(gx.util.Parse(obj.child));
 							break;
 						case 'children':
+							children = obj.children;
+							if ( typeOf(children) === 'array' ) {
+								childrenTemp = [];
+								for ( var iCh = 0, lCh = children.length; iCh < lCh; iCh++) {
+									childrenTemp.push(gx.util.Parse(children[iCh]));
+								}
+								elem.adopt(childrenTemp);
+								break;
+							}
+
 							var names = [];
 							for (var name in obj.children) {
 								var child = gx.util.Parse(obj['children'][name]);
@@ -277,8 +322,6 @@ gx.util = {
 			case 'string':
 				return document.createTextNode(obj);
 			case 'element':
-			case 'textnode':
-			case 'whitespace':
 				return obj;
 		}
 

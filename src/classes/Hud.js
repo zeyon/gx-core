@@ -1,3 +1,5 @@
+'use strict';
+
 /**
  * @class gx.ui.Hud
  * @description Creates a "Head-Up Display" to display elements (e.g. popups or forms) above other elements
