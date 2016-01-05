@@ -1,3 +1,6 @@
+if ( window.console && typeof window.console.error !== 'function' )
+	window.console.error = window.console.log;
+
 gx.util = {
 	/**
 	 * @method gx.util.Console
@@ -6,7 +9,10 @@ gx.util = {
 	 * @param {string} message The message text
 	 */
 	Console: function (source, message) {
-		console.log(source + ': ' + message);
+		if ( message instanceof Error )
+			console.error(source, message.stack);
+		else
+			console.log(source + ': ' + message);
 	},
 
 	/**
