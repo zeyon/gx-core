@@ -16,6 +16,67 @@ if (gx == undefined)
 gx.version = '1.100';
 gx.core = {};
 gx.ui = {};
+
+/**
+ * Mootools extras.
+ *
+ */
+
+
+/**
+ * Escapes special (X)HTML characters "<", ">", "&" and the double quotation marks '"'.
+ *
+ * @return {String}
+ */
+if ( typeof String.prototype.htmlSpecialChars !== 'function' ) {
+  String.prototype.htmlSpecialChars = function () {
+    return this
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+}
+
+/**
+ * Array.find(function).
+ *
+ * Find an item of an array by providing a function returning true if found.
+ *
+ * [{id:2}, {id:3}].findBy(function(item) {
+ *   return item.id === 3;
+ * }) === {id:3}
+ *
+ * Convenience arguments: If you provide string as first argument and a second
+ * argument you can find an item of an array with the provided key:value
+ *
+ * Example: This will give the same result as above:
+ *
+ * [{id:2}, {id:3}].findBy('id', 3) === {id:3}
+ *
+ */
+if ( typeof Array.prototype.findBy !== 'function' ) {
+  Array.prototype.findBy = function(mixed, value) {
+    var func = mixed;
+    if ( typeof mixed === 'string' ) {
+      func = function(item) {
+        return item[mixed] === value;
+      };
+    }
+
+    for ( var item, i = this.length - 1; i >= 0; i-- ) {
+      item = this[i];
+      if ( func(item) === true )
+        return item;
+    }
+
+    return null;
+  };
+}
+if ( window.console && typeof window.console.error !== 'function' )
+	window.console.error = window.console.log;
+
 gx.util = {
 	/**
 	 * @method gx.util.Console
@@ -24,7 +85,10 @@ gx.util = {
 	 * @param {string} message The message text
 	 */
 	Console: function (source, message) {
-		console.log(source + ': ' + message);
+		if ( message instanceof Error )
+			console.error(source, message.stack);
+		else
+			console.log(source + ': ' + message);
 	},
 
 	/**
@@ -53,6 +117,17 @@ gx.util = {
 			default:
 				return 0;
 		}
+	},
+
+	attemptConvertionWith: function(obj, key) {
+		if ( typeof obj !== 'object')
+			return obj;
+
+		var f = obj[key];
+		if ( typeof f === 'function' )
+			return f.call(obj);
+
+		return obj;
 	},
 
 	formatTime: function(mins) {
@@ -179,6 +254,27 @@ gx.util = {
 		return ele;
 	},
 
+	adoptByType: function(ele, content) {
+		switch (typeOf(content)) {
+			case 'string':
+				ele.appendText(content);
+				break;
+			case 'object':
+				ele.adopt(__(content));
+				break;
+			case 'array':
+				for ( var i = 0, l = content.length; i < l; i++)
+					this.adoptByType(ele, content[i]);
+				break;
+			// case 'element':
+			default:
+				ele.adopt(content);
+				break;
+		}
+		return ele;
+
+	},
+
 	/**
 	 * @method gx.util.printf
 	 * @description Inserts a single or multiple values into a string
@@ -256,9 +352,12 @@ gx.util = {
 					return obj.display();
 
 				obj.tag = obj.tag == null ? 'div' : obj.tag;
-				var elem = new Element(obj.tag);
+				var elem = new Element(obj.tag), children, childrenTemp;
 				for (var prop in obj) {
 					switch (prop) {
+						case '_adopt':
+							this.adoptByType(elem, obj._adopt);
+							break;
 						case 'styles':
 							elem.setStyles(obj.styles);
 							break;
@@ -272,6 +371,16 @@ gx.util = {
 							elem.adopt(gx.util.Parse(obj.child));
 							break;
 						case 'children':
+							children = obj.children;
+							if ( typeOf(children) === 'array' ) {
+								childrenTemp = [];
+								for ( var iCh = 0, lCh = children.length; iCh < lCh; iCh++) {
+									childrenTemp.push(gx.util.Parse(children[iCh]));
+								}
+								elem.adopt(childrenTemp);
+								break;
+							}
+
 							var names = [];
 							for (var name in obj.children) {
 								var child = gx.util.Parse(obj['children'][name]);
@@ -1524,6 +1633,247 @@ gx.ui.Popup = new Class({
 	}
 });
 /**
+ * This is version 2 of the gx.ui.Table class. It simplifies the class
+ * by removing the hidden thead element and do not calculate the thead sizes
+ * with javascript.
+ *
+ * It contains massive rework by splitting .addData() into
+ * createRow, updateRow, removeRow.
+ *
+ * Fixing HUGE performance issues (do not bind "click" event handler to EVERY CELL by default).
+ *
+ * Therefore the API to gx.ui.SimpleTable is broken.
+ *
+ *
+ * @class gx.ui.Table
+ * @description Creates a dynamic select box, which dynamically loads the contents from a remote URL.
+ * @extends gx.ui.Container
+ * @implements gx.util.Console
+ *
+ * @event click Fired when click a row.
+ *
+ */
+gx.ui.SimpleTable = new Class({
+  Implements: [Options, Events],
+
+  options: {
+    'cols': [],
+		'structure'      : function (row, index) {
+			return [
+				row.col1,
+				{ 'label': row.col2, 'className': row.col2class }
+			];
+		},
+    'tableCss': 'table table-striped table-hover',
+    'fireRowClick': false
+		// data: []
+  },
+
+  initialize: function (display, options) {
+    this.setOptions(options);
+    this.build(display);
+
+    this.buildCols(this.options.cols);
+  },
+
+  /**
+   * @method build
+   * @description Builds the core components
+   */
+  build: function (display) {
+    this._display = {};
+
+    var rootElmt = this._display.root = typeOf(display) === 'element' ?
+      display :
+      new Element('table');
+
+    if ( rootElmt.get('tag') === 'table' ) {
+      this._display.table = rootElmt;
+    } else {
+      this._display.table = new Element('table');
+      rootElmt.adopt(this._display.table);
+    }
+
+    this._display.table.addClass(this.options.tableCss);
+
+    this._display.tbody = new Element('tbody');
+    this._display.thead = new Element('thead');
+
+    this._display.table.adopt(
+        this._display.thead,
+        this._display.tbody
+    );
+  },
+
+  /**
+   * @method buildCols
+   * @description Builds the columns
+   * @param {array} cols An array of columns
+   */
+  buildCols: function (cols) {
+    var tr = new Element('tr');
+    this._display.thead.empty();
+    this._display.thead.adopt(tr);
+
+    cols.each(function (col) {
+      var th = new Element('th', { 'class': '' });
+
+      if ( col.properties )
+        th.set(col.properties);
+
+      switch ( typeOf(col.label) ) {
+        case 'object' :
+          th.adopt(__(col.label));
+          break;
+        case 'element':
+          th.adopt(col.label);
+          break;
+        default:
+          th.set('html', col.label);
+          break;
+      }
+
+      tr.adopt(th);
+    });
+  },
+
+
+  /**
+   * @method setData
+   * @description Sets the list data. Calls empty() and then addData(data)
+   * @param {array} data The list data to set
+   * @returns Returns this instance (for method chaining).
+   * @type gx.ui.Table
+   */
+  setData: function (data) {
+    this.empty();
+    return this.addData(data);
+  },
+
+  /**
+   * @method addData
+   * @description Adds the specified data to the table
+   * @param {array} data The data to add
+   * @returns Returns this instance (for method chaining).
+   * @type gx.ui.Table
+   */
+  addData: function (data) {
+    data.each(function (row, index) {
+      this.addRow(row, index);
+    }.bind(this));
+  },
+
+  createRow: function(row, index) {
+    var root = this;
+    var cols = root.options.structure(row, index, root);
+    var rowProperties = {};
+
+    if ( cols.row && cols.properties ) {
+      Object.merge(rowProperties, cols.properties);
+      cols = cols.row;
+    }
+
+    var tr = new Element('tr', rowProperties);
+    for ( var i = 0, l = cols.length; i < l; i++ ) {
+      var col = cols[i];
+      var td = new Element('td');
+
+      switch (typeOf(col)) {
+        case 'object' :
+          var label = col.label;
+          if ( label instanceof Element )
+            td.adopt(label);
+          else
+            td.set('html', label);
+
+          col = Object.clone(col);
+
+          if ( col.className )
+            td.addClass(col.className);
+
+          delete col.label;
+          delete col.className;
+
+          td.set(col);
+
+          break;
+
+        case 'element':
+          td.adopt(col);
+          break;
+
+        default:
+          td.set('html', col);
+          break;
+      }
+
+      tr.adopt(td);
+    }
+
+    // BAD, this event should be added to "table" tag handled with
+    // event propagation, however. This requires index management of the
+    // data rows. Therefore stay with this for now.
+    if ( this.options.fireRowClick === true ) {
+      tr.addEvent('click', function() {
+        root.fireEvent('click', [row, index]);
+      });
+    }
+
+    return tr;
+  },
+
+  addRow: function(obj, index) {
+    var tr = this.createRow(obj, index);
+    this._display.tbody.adopt(tr);
+
+    return tr;
+  },
+
+  updateRow: function(obj, index) {
+    var replaceTr;
+    var tbody = this._display.tbody;
+    if ( typeof tbody.childNodes !== 'undefined' )
+      replaceTr = tbody.childNodes[index];
+    else
+     replaceTr = tbody.getChildren()[index];
+
+    var tr = this.createRow(obj, index);
+    tr.replaces(replaceTr);
+
+    return tr;
+  },
+
+  removeRow: function(index) {
+    var row;
+    var tbody = this._display.tbody;
+    if ( typeof tbody.childNodes !== 'undefined' )
+      row = tbody.childNodes[index];
+    else
+     row = tbody.getChildren()[index];
+
+    if ( row )
+      $(row).destroy();
+  },
+
+  getRows: function() {
+    return this._display.tbody.childNodes;
+  },
+
+  /**
+   * @method empty
+   * @description Clears the table body
+   * @returns Returns this instance (for method chaining).
+   * @type gx.ui.Table
+   */
+  empty: function () {
+    this._display.tbody.empty();
+  },
+
+  toElement: function() {
+    return this._display.root;
+  }
+});
+/**
  * @class gx.ui.Tabbox
  * @description Creates a tabbed box
  * @extends gx.ui.Container
@@ -1559,13 +1909,14 @@ gx.ui.Tabbox = new Class({
 			this.build();
 
 			var frames = this.options.frames;
-			if ( isArray(frames) ) {
-				frames.each(function (item) {
-					root.addTab(item.name, item.title, item.content);
-				});
+			if ( frames instanceof Array ) {
+				for (var i = 0; i < frames.length; i++) {
+					var item = frames[i];
+					root.addTab(item.name, item.title, item.content, item.properties);
+				}
 			}
 
-			if ( isFunction(this.options.onChange) )
+			if ( typeof(this.options.onChange) === 'function' )
 				this.addEvent('change', this.options.onChange);
 
 			if ( typeOf(this.options.show) == 'string' )
@@ -1576,6 +1927,10 @@ gx.ui.Tabbox = new Class({
 					this.openTab(index);
 			}
 		} catch(e) { gx.util.Console('gx.ui.Tabbox->initialize', e.message); }
+	},
+
+	isNode: function (obj) {
+		return ( (typeof(obj) === 'object') && (obj.nodeType == 1) );
 	},
 
 	/**
@@ -1614,7 +1969,7 @@ gx.ui.Tabbox = new Class({
 	buildTab: function (name, title) {
 		var root = this;
 
-		var link = new Element('a', {'html': title.replace(/ /g, '&nbsp;')});
+		var link = new Element('a', {'html': String(title).replace(/ /g, '&nbsp;')});
 		var tab = new Element('th');
 		tab.adopt(link);
 		tab.inject(this._display.tabfull, 'before');
@@ -1651,16 +2006,32 @@ gx.ui.Tabbox = new Class({
 	 * @param {string} name The name of the tab
 	 * @param {string} title The title of the tab
 	 * @param {string|node} content The content of the tab
+	 * @param {object} tabElementProperties Optional. Properties to apply to
+	 *     the DOM element using {@link Element.prototype.set()}.
 	 */
-	addTab: function (name, title, content) {
+	addTab: function (name, title, content, tabElementProperties) {
 		var root = this;
 		try {
-			if ( typeOf(content) == 'string' )
-				content = new Element('div', {'html': content});
+			switch ( typeOf(content) ) {
+				case 'string':
+					content = new Element('div', { 'html': content });
+					break;
+
+				case 'element':
+					break;
+
+				default:
+					content = $(content);
+					break;
+			}
 
 			if ( typeOf(name) == 'string' && typeOf(title) == 'string' && typeOf(content) == 'element' ) {
 				if ( typeOf(this._tabs[name]) != 'element' ) {
 					var tab = root.buildTab(name, title);
+
+					if ( tabElementProperties )
+						tab.set(tabElementProperties);
+
 					content = root.buildContent(content);
 					content.setStyle('display', 'none');
 					this._frames[name] = content;
@@ -1687,13 +2058,44 @@ gx.ui.Tabbox = new Class({
 	},
 
 	/**
+	 * Sets a tab's title.
+	 *
+	 * @param {String} name The tab's name.
+	 * @param {String} title The title to set.
+	 * @returns {gx.ui.Tabbox}
+	 * @see this.setTabObjectTitle()
+	 */
+	setTabTitle: function (name, title) {
+		if ( this.isNode(this._tabs[name]) )
+			this.setTabObjectTitle(this._tabs[name], title);
+
+		return this;
+	},
+
+	/**
+	 * Sets the title of a tab object. Override this if you implement a custom {@link this.buildTab()}.
+	 *
+	 * @todo !!! Maybe it is better to create a custom class for tabs that is supplied on instantiation of this class.
+	 * @param {object} tabObject
+	 * @param {String} title The title to set.
+	 * @returns {gx.ui.Tabbox}
+	 */
+	setTabObjectTitle: function (tabObject, title) {
+		var a = tabObject.getElement('>a:first-child');
+		if ( a )
+			a.set('html', String(title).replace(/ /g, '&nbsp;'));
+
+		return this;
+	},
+
+	/**
 	 * @method closeTab
 	 * @description Closes the tab with the given name
 	 * @param {string} name The name of the tab
 	 */
 	closeTab: function (name) {
 		try {
-			if ( isNode(this._tabs[name]) ) {
+			if ( this.isNode(this._tabs[name]) ) {
 				this._tabs[name].removeClass(this.class_active);
 				this._frames[name].setStyle('display', 'none');
 				this._active = false;
@@ -1708,7 +2110,7 @@ gx.ui.Tabbox = new Class({
 	 */
 	openTab: function (name, options) {
 		try {
-			if ( !isNode(this._tabs[name]) )
+			if ( !this.isNode(this._tabs[name]) )
 				return this;
 
 			if ( this._active )
@@ -1717,7 +2119,7 @@ gx.ui.Tabbox = new Class({
 			this._active = name;
 			this._tabs[name].addClass(this.class_active);
 			this._frames[name].setStyle('display', 'block');
-			this.fireEvent('change', [name, options]);
+			this.fireEvent('change', [ name, options, this ]);
 
 		} catch(e) {
 			gx.util.Console('gx.ui.Tabbox->openTab', e.message);
@@ -1736,7 +2138,7 @@ gx.ui.Tabbox = new Class({
 	 * @param {String} name The name of the tab to hide.
 	 */
 	hideTab: function (name) {
-		if ( isNode(this._tabs[name]) )
+		if ( this.isNode(this._tabs[name]) )
 			this._tabs[name].hide();
 
 		return this;
@@ -1748,7 +2150,7 @@ gx.ui.Tabbox = new Class({
 	 * @param {String} name The name of the tab to unhide.
 	 */
 	revealTab: function (name) {
-		if ( isNode(this._tabs[name]) )
+		if ( this.isNode(this._tabs[name]) )
 			this._tabs[name].show();
 
 		return this;
@@ -1794,461 +2196,745 @@ gx.ui.Tabbox = new Class({
  * @option {bool} onClick when a row is clicked
  * @option {bool} onFilter when a filter is set
  * @option {bool} onRowAdd when a row is added
+ * @option {bool} onStart when the table is being rendered
+ * @option {bool} onComplete when the table is rendered completely
  */
 gx.ui.Table = new Class({
-    gx: 'gx.ui.Table',
-    Extends: gx.ui.Container,
-    options: {
-        'cols': [
-            {'label': 'Column 1', 'id': 'col1', 'width': '20px', 'filter': 'asc'},
-            {'label': 'Column 2', 'id': 'col2'}
-        ],
-        'structure': function(row, index) {
-            return [
-                row.col1,
-                {'label': row.col2, 'className': row.col2class}
-            ];
-        },
-        'data'        : [],
-        'scroll'      : true,
-        'autoresize'  : true,
-        'selectable'  : false,
-        'checkOnClick': true,
-        'sortable'    : false,
-        'height'      : '400px',
-        'syncDelay'   : 100
-    },
-    _cols: [],
-    _rows: [],
-    _filter: false,
-    _colspan: 0,
-    _scrollBarCol: false,
-    _theme: {
-        filterAsc   : 'asc',
-        filterDesc  : 'desc',
-        unfiltered  : '',
-        th          : 'th',
-        filter      : 'filter',
-        filterElem  : 'div',
-        mainTable   : 'tbl',
-        mainThead   : '',
-        mainTheadRow: 'tbl_head',
-        mainTbody   : '',
-        wrapper     : '',
-        emptyCol    : '',
-        headerTable : 'tbl',
-        tbodyTr     : 'tbl_row',
-        oddRow      : 'bg',
-        colCheck    : 'tbl_chk'
-    },
-    initialize: function(display, options) {
-        var root = this;
-        try {
-            this.parent(display, options);
-            //this.addEvent('complete', this.adoptSizeToHead.bind(this));
+	gx: 'gx.ui.Table',
+	Extends: gx.ui.Container,
+	options: {
+		'cols'           : [
+			{ 'label': 'Column 1', 'id': 'col1', 'width': '20px', 'filter': 'asc' },
+			{ 'label': 'Column 2', 'id': 'col2' }
+		],
+		'structure'      : function (row, index) {
+			return [
+				row.col1,
+				{ 'label': row.col2, 'className': row.col2class }
+			]
+		},
+		'stopPropagation': false,
+		'height'         : false,
+		'data'           : []
+	},
+	_theme: {
+		'asc': 'asc',
+		'desc': 'desc',
+		'unfiltered': '',
+		'th': 'th',
+		'filter': 'filter',
+		'table_body': 'view fixed',
+		'table_head': 'view',
+		'filter_elem': 'div'
+	},
+	_cols: [],
+	_filter: false,
+	_colspan: 0,
+	_scrollBarCol: false,
 
-            this._display.table    = new Element('table', {'class': this._theme.mainTable});
-            this._display.thead    = new Element('thead', {'class': this._theme.mainThead});
-            this._display.theadRow = new Element('tr', {'class': this._theme.mainTheadRow});
-            this._display.tbody    = new Element('tbody', {'class': this._theme.mainTbody});
+	initialize: function (display, options) {
+		var root = this;
+		try {
+			this.parent(display, options);
 
-            this._display.root.adopt(
-                this._display.table.adopt([
-                    this._display.thead.adopt(
-                        this._display.theadRow
-                    ),
-                    this._display.tbody
-                ])
-            );
+			// backward compatibility
+			this.theme = this._theme;
 
-            this.buildCols();
+			this.addEvent('complete', this.adoptSizeToHead.bind(this));
 
-            if (this.options.scroll) {
-                this._display.header = new Element('table', {'class': this._theme.headerTable});
-                this._display.header.inject(this._display.root, 'top');
-                this._display.header.adopt(this._display.thead);
-                this._display.wrapper = new Element('div', {'class': this._theme.wrapper, 'styles': {'overflow-y': 'scroll', 'height': this.options.height}});
-                this._display.wrapper.wraps(this._display.table);
+			this.build();
 
-                this._display.emptyCol = new Element('th', {'class': this._theme.emptyCol});
-                this._display.theadRow.adopt(this._display.emptyCol);
+			if ( this.options.height )
+				this.setHeight(this.options.height);
 
-                this.addEvent('display', function() {
-                    this.syncColWith.delay(this.options.syncDelay, this);
-                }.bind(this));
+			this.buildCols(this.options.cols);
+			this.setData(this.options.data);
 
-                if (this.options.autoresize) {
-                    window.addEvent('resize', function() {
-                        this.syncColWith();
-                    }.bind(this));
-                }
-                this.addEvent('complete', function() {
-                    this.syncColWith();
-                }.bind(this));
-            }
+			window.addEvent('resize', this.adoptSizeToHead.bind(this));
+		} catch(e) {
+			gx.util.Console('gx.ui.Table->initialize', e.message);
+		}
+	},
 
-            if (this.options.selectable && this.options.checkOnClick) {
-                this.addEvent('click', function(row) {
-                    if (event.target == row.checkbox)
-                        return;
-                    row.checkbox.checked = !row.checkbox.checked;
-                }.bind(this));
-            }
+	/**
+	 * @method build
+	 * @description Builds the core components
+	 */
+	build: function () {
+		var root = this;
 
-            this.setData(this.options.data);
+		try {
+			this._display.root.addClass('gxComTable');
+			this._display.hiddenTableHead = new Element('thead', { 'class': this.theme.table_head });
+			this._display.tbody = new Element('tbody');
 
-            //window.addEvent('resize', this.adoptSizeToHead.bind(this));
-        } catch(e) {
-            e.message = 'gx.ui.Table->initialize: ' + e.message;
-            throw e;
-        }
-    },
+			this._display.thead = new Element('thead');
 
-    /**
-     * @method syncColWidth
-     * @description Synchronize the column width
-     */
-    syncColWith: function() {
-        if (!this.options.scroll)
-            return;
+			this._display.table = new Element('table', { 'class': this.theme.table_body })
+				.adopt(
+					this._display.hiddenTableHead,
+					this._display.tbody
+				);
 
-        var scrollWidth = this._display.header.getSize().x - this._display.table.getSize().x;
-        this._display.emptyCol.setStyle('width', scrollWidth);
-        // this._display.emptyCol.setStyle('background', 'red');
+			if ( this.options.simpleTable ) {
+				this._display.root.adopt(this._display.table);
+			} else {
+				this._display.hiddenTableHead.hide();
+				this._display.tableDiv = new Element('div', {'style': 'overflow-y:scroll;'})
+					.adopt(this._display.table);
+				this._display.root.adopt(
+					new Element('table', { 'class': this.theme.table_head })
+						.adopt(this._display.thead),
+					this._display.tableDiv
+				);
+			}
+		} catch(e) {
+			gx.util.Console('gx.ui.Table->build', e.message);
+		}
+	},
 
-        var row = this._display.tbody.getElement('tr');
-        if (row == null)
-            return;
+	/**
+	 * @method buildFilterIndicator
+	 * @description Adds an indicator object to the column
+	 * @param {object} col
+	 * @return {object} Column with indicator object
+	 */
+	buildFilterIndicator: function (col) {
+		var root = this;
+		col.indicator = new Element(this.theme.filter_elem, {'class': this.theme.filter});
+		col.indicator.inject(col.th, 'top');
+		col.th.addEvent('click', function () {
+			root.setSort(col);
+		});
+		return col;
+	},
 
-        var th = this._display.theadRow.getElements('th');
-        row.getElements('td').each(function(td, index) {
-            if (!td.getSize().x)
-                return;
-            if (th[index] != null)
-                th[index].setStyle('width', td.getSize().x);
-        }.bind(this));
-    },
+	/**
+	 * @method buildCols
+	 * @description Builds the columns
+	 * @param {array} cols An array of columns
+	 */
+	buildCols: function (cols) {
+		this.options.cols = cols;
 
-    /**
-     * @method buildFilterIndicator
-     * @description Adds an indicator object to the column
-     * @param {object} col
-     * @return {object} Column with indicator object
-     */
-    buildFilterIndicator: function (col) {
-        col.indicator = new Element(this._theme.filterElem, {'class': this._theme.filter});
-        col.indicator.inject(col.th, 'top');
-        col.th.set('data-sort', '-' + col.id);
-        col.th.addEvent('click', function() {
-            this.setSort(col);
-        }.bind(this));
-    },
+		var root = this;
+		try {
+			var tr = new Element('tr');
+			root._display.thead.empty();
+			root._display.thead.adopt(tr);
 
-    /**
-     * @method buildCols
-     * @description Builds the columns
-     * @param {array} cols An array of columns
-     */
-    buildCols: function(cols) {
-        try {
-            if (this.options.selectable) {
-                this._display.checkall = new Element('input', {'type': 'checkbox'});
-                this._display.checkall.addEvent('click', function() {
-                    this.toggleSelect();
-                }.bind(this));
-                this.options.cols = [{
-                    'label'     : this._display.checkall,
-                    'filterable': false,
-                    'className' : this._theme.colCheck
-                }].append(this.options.cols);
-            }
+			cols.each(function (col) {
+				col.th = new Element('th', { 'class': root.theme.th });
 
-            this.options.cols.each(function(col) {
-                col.th = new Element('th');
-                switch (typeOf(col.label)) {
-                    case 'object' :
-                        col.th.adopt(__(col.label));
-                        break;
-                    case 'element':
-                        col.th.adopt(col.label);
-                        break;
-                    default:
-                        col.th.set('html', col.label);
-                        break;
-                }
+				if ( col.properties )
+					col.th.set(col.properties);
 
-                if ((col.filter != null || col.filterable != false) && this.options.sortable) {
-                    this.buildFilterIndicator(col);
-                }
+				switch ( typeOf(col.label) ) {
+					case 'object' :
+						col.th.adopt(__(col.label));
+						break;
+					case 'element':
+						col.th.adopt(col.label);
+						break;
+					default:
+						col.th.set('html', col.label);
+						break;
+				}
+				if ( col.filter != null || col.filterable != false ) {
+					col = root.buildFilterIndicator(col);
+				}
+				if ( col.width != null )
+					col.th.setStyle('width', col.width);
+				if ( col.filter != null )
+					root.setSort(col, col.filter, 1);
 
-                if (col['text-align'] != null)
-                    col.th.setStyle('text-align', col['text-align']);
+				tr.adopt(col.th);
+				root._cols.push(col);
+			});
 
-                if (col.width != null)
-                    col.th.setStyle('width', col.width);
-                if (col.className != null)
-                    col.th.set('class', col.className);
-                if (col.filter != null)
-                    this.setSort(col, col.filter, 1);
+			this._display.hiddenTableHead
+				.empty()
+				.adopt(this._display.thead.clone().getChildren());
 
-                this._display.theadRow.adopt(col.th);
-                this._cols.push(col);
-            }.bind(this));
-            this._colspan = this.options.cols.length;
-            // Add one more col to header which automatically scale with of scroll bar width
-            // Set default width 16px in case no data will be add at first
-            // Erase when data will be add to get automatically scaled.
-            //this._scrollBarCol = new Element('th', {'class': ''});
-            this._display.theadRow.adopt(this._scrollBarCol);
-        } catch(e) {
-            e.message = 'gx.ui.Table->buildCols: ' + e.message;
-            throw e;
-        }
+			if ( !this.options.simpleTable )
+				this._display.table.setStyle('margin-top', -1 * this._display.hiddenTableHead.getStyle('height').toInt());
 
-        return this;
-    },
+			// this._cols[0].th.removeClass('b_l');
+			this._colspan = cols.length;
+			// Add one more col to header which automatically scale with of scroll bar width
+			this._scrollBarCol = new Element('th', {'class': 'b_l', 'style': 'width: ' + gx.Browser.scrollBar.width + 'px; padding: 0px;'});
+			tr.adopt(this._scrollBarCol);
 
-    /**
-     * @method addData
-     * @description Adds the specified data to the table
-     * @param {array} data The data to add
-     */
-    addData: function(data) {
-        var odd = false;
-        try {
-            if ( typeOf(data) != 'array' )
-                return this;
+		} catch(e) {
+			gx.util.Console('gx.ui.Table->buildCols', e.message);
+		}
 
-            this.fireEvent('addData', data);
-            data.each(function(row, index) {
-                if ( typeOf(row) != 'object' )
-                    return;
+		return this;
+	},
 
-                var rowProperties = {};
-                var cols = this.options.structure(row, index);
+	/**
+	 * @method setHeight
+	 * @description Sets the table height
+	 * @param {int} height
+	 * @returns Returns this instance (for method chaining).
+	 * @type gx.ui.Table
+	 */
+	setHeight: function (height) {
+		( this._display.tableDiv || this._display.table ).setStyle('height', height);
+		return this;
+	},
 
-                if (gx.util.isObject(cols) && cols.row ) {
-                    if (cols.properties)
-                        rowProperties = cols.properties;
-                    cols = cols.row;
-                }
+	/**
+	 * @method setSort
+	 * @description Sorts the table according to the specified column and mode
+	 * @param {object} col The column that is decisive for the sorting
+	 * @param {string} mode The sorting order: 'asc' or 'desc'
+	 * @param noEvent
+	 * @returns Returns this instance (for method chaining).
+	 * @type gx.ui.Table
+	 */
+	setSort: function (col, mode, noEvent) {
+		var root = this;
+		try {
+			if ( this._filter ) {
+				if ( this._filter.id == col.id ) {
+					if ( (this._filter.mode == 'asc' && mode == null) || (mode != null && mode == 'desc') ) {
+						this._filter.indicator.removeClass(this.theme.asc);
+						this._filter.indicator.addClass(this.theme.desc);
+						this._filter.mode = 'desc';
+					} else {
+						this._filter.indicator.removeClass(this.theme.desc);
+						this._filter.indicator.addClass(this.theme.asc);
+						this._filter.mode = 'asc';
+					}
+					if ( noEvent == null )
+						this.fireEvent('filter', col);
 
-                if (!gx.util.isArray(cols))
-                    return;
+					return this;
 
-                // Add checkboxes
-                if (this.options.selectable) {
-                    row.checkbox = new Element('input', {
-                        'type'   : 'checkbox',
-                        'value'  : row.ID,
-                        'checked': row.checked
-                    });
-                    cols = [{
-                        'label': row.checkbox,
-                        'className': this._theme.colCheck
-                    }].append(cols);
-                }
+				} else {
+					this._filter.indicator.removeClass(this.theme.asc);
+					this._filter.indicator.removeClass(this.theme.desc);
 
-                row.tr = new Element('tr', rowProperties)
-                    .addClass(this._theme.tbodyTr);
+				}
+			}
 
-                this.fireEvent('beforeRowAdd', [row, index] );
+			if ( mode == null || mode != 'desc' )
+				mode = 'asc';
 
-                var clickable = (row.clickable == null || row.clickable != false || (this.options.cols[index] != null && this.options.cols[index].clickable != false));
+			this._filter = col;
+			this._filter.indicator.addClass(this.theme[mode]);
+			this._filter.mode = mode;
+			if ( noEvent == null )
+				this.fireEvent('filter', col);
 
-                if (odd && this._theme.oddRow)
-                    row.tr.addClass(this._theme.oddRow);
-                odd = !odd;
+		} catch(e) {
+			gx.util.Console('gx.ui.Table->setSort', e.message);
+		}
 
-                cols.each(function(col, index) {
-                    clickable = clickable ? !(this.options.cols[index] != null && this.options.cols[index].clickable == false) : true;
-                    var td = new Element('td');
+		return this;
+	},
 
-                    if ( this.options.cols[index].width != null )
-                        td.setStyle('max-width', this.options.cols[index].width);
+	/**
+	 * @method getFilter
+	 * @description Returns the filter object {mode: 'asc'|'desc', id: COLID}
+	 */
+	getFilter: function () {
+		return this._filter;
+	},
 
-                    switch ( typeOf(col) ) {
-                        case 'object' :
-                            col = Object.clone(col);
+	/**
+	 * @method setData
+	 * @description Sets the list data. Calls empty() and then addData(data)
+	 * @param {array} data The list data to set
+	 * @returns Returns this instance (for method chaining).
+	 * @type gx.ui.Table
+	 */
+	setData: function (data) {
+		this.empty();
+		this.fireEvent('setData', data)
+		return this.addData(data);
+	},
 
-                            var labelType = typeOf(col.label);
-                            if ( (labelType === 'element') || (labelType === 'textnode') )
-                                td.adopt(col.label);
-                            else
-                                td.set('html', col.label);
+	/**
+	 * @method addData
+	 * @description Adds the specified data to the table
+	 * @param {array} data The data to add
+	 * @returns Returns this instance (for method chaining).
+	 * @type gx.ui.Table
+	 */
+	addData: function (data) {
+		var root = this;
+		var odd = false;
 
-                            clickable = ( (col.clickable == null) || (col.clickable != false) );
-                            if ( col.className != null )
-                                td.addClass(col.className);
+		try {
+			if ( typeOf(data) != 'array' )
+				return this;
 
-                            delete col.label;
-                            delete col.clickable;
-                            delete col.className;
+			this.fireEvent('addData', data)
+			data.each(function (row, index) {
+				if ( typeOf(row) != 'object' )
+					return;
 
-                            td.set(col);
+				var cols = root.options.structure(row, index, root);
+				var rowProperties = {};
 
-                            break;
+				if ( (typeof(cols) === 'object') && cols.row ) {
+					Object.merge(rowProperties, cols.properties);
+					cols = cols.row;
+				}
 
-                        case 'element':
-                        case 'textnode':
-                            td.adopt(col);
-                            break;
-                        default:
-                            td.set('html', col);
-                            break;
-                    }
+				if ( typeOf(cols) != 'array' )
+					return;
 
-                    if ( this._cols[index]['text-align'] != null )
-                        td.setStyle('text-align', this._cols[index]['text-align']);
+				root.fireEvent('beforeRowAdd', row);
+				row.tr = new Element('tr', rowProperties)
+					.addClass('em');
+				var clickable = (row.clickable == null || row.clickable != false);
 
-                    if (clickable) {
-                        td.addEvent('click', function(event) {
-                            this.fireEvent('click', [ row, event, index ] );
-                        }.bind(this));
-                        td.addEvent('dblclick', function(event) {
-                            this.fireEvent('dblclick', [ row, event, index ] );
-                        }.bind(this));
-                    }
-                    row.tr.adopt(td);
-                }.bind(this));
-                this._display.tbody.adopt(row.tr);
-                this._rows.push(row);
-                this.fireEvent('rowAdd', [row, index] );
-                this.fireEvent('afterRowAdd', [row, index] );
-            }.bind(this));
-            //if( data.length > 0 ) this._scrollBarCol.erase('style');
-            this.fireEvent('complete', data);
-        } catch(e) {
-            e.message = 'gx.ui.Table->addData: ' + e.message;
-            throw e;
-        }
+				if ( odd )
+					row.tr.addClass('bg');
+				odd = !odd;
 
-        return this;
-    },
+				cols.each(function (col, index) {
+					clickable = clickable ? !(root.options.cols[index] != null && root.options.cols[index].clickable == false) : true;
+					var td = new Element('td');
+					var width = false;
 
-    /**
-     * @method setData
-     * @description Sets the list data. Calls empty() and then addData(data)
-     * @param {array} data The list data to set
-     */
-    setData: function(data) {
-        this._rows = [];
-        this.empty();
-        this.fireEvent('setData', data)
-        return this.addData(data);
-    },
+					if ( (width = root.options.cols[index].width) )
+						td.setStyle('width', width);
 
-    /**
-     * @method setSort
-     * @description Sorts the table according to the specified column and mode
-     * @param {object} col The column that is decisive for the sorting
-     * @param {string} mode The sorting order: 'asc' or 'desc'
-     * @param noEvent
-     */
-    setSort: function(col, mode, noEvent) {
-        if ( !this._filter )
-            this._filter = {};
+					switch (typeOf(col)) {
+						case 'object' :
+							var label = col.label;
+							if ( label instanceof Element )
+								td.adopt(label);
+							else
+								td.set('html', label);
 
-        if ( mode == null ) {
-            if ( col.th.get('data-sort').indexOf('-') > -1 ) {
-                mode = 'asc';
-                var prefix = '';
-            } else {
-                mode = 'desc';
-                var prefix = '-';
-            }
-        }
+							col = Object.clone(col);
 
-        if (this._filter.indicator != null && this._theme.filterDesc && this._theme.filterAsc) {
-            this._filter.indicator.removeClass(this._theme.filterDesc);
-            this._filter.indicator.removeClass(this._theme.filterAsc);
-        }
+							clickable = (col.clickable == null || col.clickable != false);
+							if ( col.className != null )
+								td.addClass(col.className);
 
-        if ( mode == 'asc' ) {
-            this._filter.mode = 'desc';
-            var opPrefix = '-';
-            if (this._theme.filterDesc)
-                col.indicator.addClass(this._theme.filterDesc);
-        } else {
-            this._filter.mode = 'asc';
-            var opPrefix = '';
-            if (this._theme.filterAsc)
-                col.indicator.addClass(this._theme.filterAsc);
-        }
+							delete col.label;
+							delete col.clickable;
+							delete col.className;
 
-        for ( var i = 0; i < this._cols.length; i++ ) {
-            var currentCol = this._cols[i];
-            currentCol.th.removeClass('act');
-            currentCol.th.set('data-sort', opPrefix + currentCol.id);
-        }
+							td.set(col);
 
-        col.th.set('data-sort', prefix + col.id);
-        col.th.addClass('act');
+							break;
 
-        this._filter.indicator = col.indicator;
-        this._filter.th = col.th;
-        this._filter.id = col.id;
+						case 'element':
+							td.adopt(col);
+							break;
 
-        if (noEvent == null)
-            this.fireEvent('filter', [col, this._filter.mode]);
+						default:
+							td.set('html', col);
+							break;
+					}
 
-        return this;
-    },
+					if ( clickable ) {
+						td.addEvent('click', function (event) {
+							if ( root.options.stopPropagation )
+								event.stopPropagation();
 
-    /**
-     * @method getFilter
-     * @description Returns the filter object {mode: 'asc'|'desc', id: COLID}
-     */
-    getFilter: function() {
-        return this._filter;
-    },
+							root.fireEvent('click', [ row, event ]);
+						});
+						td.addEvent('dblclick', function (event) {
+							if ( root.options.stopPropagation )
+								event.stopPropagation();
 
-    /**
-     * @method empty
-     * @description Clears the table body
-     */
-    empty: function() {
-        this._display.tbody.empty();
-        return this;
-    },
+							root.fireEvent('dblclick', [ row, event ]);
+						});
+					}
+					row.tr.adopt(td);
+				});
 
-    getSelection: function() {
-        var selection = [];
-        this._rows.each(function(row) {
-            if (row.checkbox == null || !row.checkbox.checked)
-                return;
+				root._display.tbody.adopt(row.tr);
+				root.fireEvent('rowAdd', row);
+				root.fireEvent('afterRowAdd', row);
+			});
+			this.fireEvent('complete', data);
 
-            selection.push(row);
-        }.bind(this))
+		} catch(e) {
+			gx.util.Console('gx.ui.Table->addData', e.message);
+		}
 
-        return selection;
-    },
+		return this;
+	},
 
-    toggleSelect: function() {
-        if (!this.options.selectable)
-            return;
+	/**
+	 * @method empty
+	 * @description Clears the table body
+	 * @returns Returns this instance (for method chaining).
+	 * @type gx.ui.Table
+	 */
+	empty: function () {
+		this._display.tbody.empty();
+		return this;
+	},
 
-        var deselect = true;
-        this._rows.each(function(row, index) {
-            if (!row.checkbox.checked)
-                deselect = false;
-        });
-        this._rows.each(function(row) {
-            row.checkbox.checked = !deselect;
-        });
-        this._display.checkall.checked = !deselect;
-    },
+	/**
+	 * @method adoptSizeToHead
+	 * @description Sets the cell widths of the header with the width of the cell in the first row
+	 * @returns Returns this instance (for method chaining).
+	 * @type gx.ui.Table
+	 */
+	adoptSizeToHead: function () {
+		var row = this._display.tbody.getElement('tr');
+		if ( row == null )
+			return this;
 
-    checkall: function(value) {
-        if (value !== false)
-            value = true;
+		row.getElements('td').each( function (ele) {
+			// Firefox and possibly other browsers yield the CSS dimensions in
+			// percent if these were specified as such using inline styles.
+			// See also for a demo of this behavior: http://jsfiddle.net/2jwBQ/
+			var w = (
+				(document.defaultView && document.defaultView.getComputedStyle)
+				? document.defaultView.getComputedStyle(ele, null).getPropertyValue('width')
+				: ele.getComputedSize({ 'styles': [], 'mode': 'horizontal' }).width.toInt()
+			);
+			if ( this._cols[ele.cellIndex] )
+				this._cols[ele.cellIndex].th.setStyle('width', w);
+		}.bind(this));
 
-        this._rows.each(function(row) {
-            row.checkbox.checked = value;
-        });
-        this._display.checkall.checked = value;
+		return this;
+	}
+});
+gx.ui.TemplatesClass = new Class({
+
+  Binds: [
+    'createElement'
+  ],
+
+  /**
+   * Used to recognize inline render calls.
+   * @type {Boolean}
+   */
+  isInline: 0,
+
+  /**
+   * This var is used to bind elements to the optional storage argument.
+   * @type {object}
+   */
+  storageReference: null,
+
+  /**
+   * This var is used to apply the data parameter to inline templates.
+   * @type {*}
+   */
+  dataReference: null,
+
+  templates: {},
+
+  initialize: function() {
+    this.boundRenderInline = this.renderInline.bind(this);
+  },
+
+  /**
+   * Creating an element with the given name, properties and children.
+   *
+   * First argument is the node name. E.g. div, textarea etc.
+   *
+   * Rest arguments (independent order):
+   *   ByFirstChar:
+   *   '#=myId'           - Element get this id
+   *   ':=myName'         - Element will be bind to key 'myName'
+   *   '.=class1 and two' - Element.className will be 'class1 and two'
+   *
+   *   'AnyOtherString'  - Will be appended as TextNode
+   *   {}                - Set all object keys as property (class, id, any)
+   */
+  createElement: function(/*nodeName*/) {
+    var _node, element = arguments[0], type = typeOf(element);
+    if ( type === 'element' ) {
+      _node = element;
+    } else if ( type === 'string' ) {
+      if ( element.substr(0, 2) === '~=' ) {
+        return this.boundRenderInline.apply(this, [element.substr(2)].append(Array.prototype.slice.call(arguments, 1)));
+      }
+
+      _node = new Element(element);
+    } else if ( type === 'function') {
+      return this.boundRenderInline.apply(this, [element].append(Array.prototype.slice.call(arguments, 1)));
+    } else {
+      throw new Error('InvalidArgumentsException: Invalid tag name argument type: ' + type);
     }
-});/**
+
+    var i = 0;
+    var argLength = arguments.length;
+    var arg, firstChar, tmp;
+
+    while (++i < argLength) {
+      // iterate over all arguments
+
+      arg = arguments[i];
+      if ( !arg )
+        continue;
+
+      type = typeOf(arg);
+      if (type === 'string') {
+        // Process special first chars
+        firstChar = arg.substring(0, 2);
+        if (firstChar === '.=') {
+          // set class of the node
+
+          _node.addClass(arg.substring(2));
+
+        } else if (firstChar === ':=') {
+          // Bind this node to storage argument
+
+          // Already checked for typeof StorageReference === 'object'
+          if (this.references === undefined)
+            continue;
+
+          this.references[arg.substring(2)] = _node;
+
+        } else {
+          // Append string as TEXT_NODE
+
+          _node.appendText(arg);
+        }
+
+      } else if (type === 'element') {
+        // If argument is ELEMENT_NODE || TEXT_NODE append it
+
+        _node.adopt(arg);
+
+      } else if (type === 'function') {
+        // Execute function and add result to arguments array for processing
+
+        tmp = arg.call(this, this.createElement, this.dataReference, this);
+
+        if (tmp === undefined)
+          continue;
+
+        if (!Array.isArray(tmp))
+          tmp = [tmp];
+
+        Array.prototype.splice.apply(arguments, [i + 1, 0].concat(tmp));
+        argLength = arguments.length;
+
+      } else if (type === 'array') {
+        // Just add the content of the array to the arguments array to get
+        // processed
+        Array.prototype.splice.apply(arguments, [i + 1, 0].concat(arg));
+        argLength = arguments.length;
+
+      } else if (type === 'object') {
+        // Set keys as attributes
+        _node.set(arg);
+
+      }
+
+    }
+
+    return _node;
+  },
+
+  register: function(name, fnc) {
+    this.templates[name] = fnc;
+    return this;
+  },
+
+  /**
+   *
+   * @param {object} ref (Optional)
+   * @param {object} data (Optional)
+   * @param {function|string} tpl
+   * @return {Element}
+   */
+  render: function render(/*ref, data, mixedTpl*/) {
+    var res, data = {}, ref, tpl;
+    if ( arguments.length === 1 ) {
+      tpl = arguments[0];
+    } else if ( arguments.length === 2 ) {
+      ref = arguments[0];
+      tpl = arguments[1];
+    } else { // if ( arguments.length > 2 ) {
+      ref = arguments[0];
+      data = arguments[1];
+      tpl = arguments[2];
+    }
+
+    if (typeof tpl === 'string')
+      tpl = this.templates[tpl];
+
+    if ( typeof tpl !== 'function' )
+      throw new Error('InvalidArgumentsException: Invalid template function: ' + tpl);
+
+    if ( ref && typeOf(ref) !== 'object' )
+      throw new Error('InvalidArgumentsException: Invalid "ref" parameter');
+
+    if ( this.isInline === 0 ) {
+      this.dataReference = data;
+      this.references = ref;
+    } else if ( !data ) {
+      data = this.dataReference;
+    }
+
+    if ( arguments.length > 3 ) {
+      res = tpl.apply(this, [this.createElement, data].append(
+        // Delegate all arguments
+        Array.prototype.slice.call(arguments, 3)
+      ));
+    } else {
+      res = tpl.call(this, this.createElement, data);
+    }
+
+    return res;
+    // if (Array.isArray(nodes)) {
+    //   var docFrag = this.doc.createDocumentFragment();
+    //   for (var i = 0, l = nodes.length; i < l; i++)
+    //     docFrag.appendChild(nodes[i]);
+
+    //   return docFrag;
+    // }
+
+    // return nodes;
+  },
+
+  renderInline: function(tplName, data) {
+    this.isInline++;
+    var res = this.render.apply(this, [this.references, data, tplName].append(
+      // Delegate all arguments
+      Array.prototype.slice.call(arguments, 2)
+    ));
+    this.isInline--;
+
+    return res;
+  },
+
+  storeReference: function(name, pointer) {
+    if (this.references === undefined)
+      return;
+
+    this.references[name] = pointer;
+  }
+});
+
+
+
+
+
+
+/*abstract*/ gx.ui.TemplateContainer = new Class({
+  Implements: Events,
+  _elmt: null,
+  _ui: {
+  },
+
+  rendered: false,
+
+  /**
+   * By default, conveniently immediately render this container.
+   * You probably want to override this method.
+   */
+  initialize: function(data) {
+    this.runRenderer(data);
+  },
+
+  runRenderer: function(data) {
+    if ( !data )
+      data = this.data || {};
+
+    if ( typeof this.preRender === 'function' )
+      this.preRender(data);
+
+    if ( this.rendered )
+      this._elmt = this.renderUpdate(data);
+    else {
+      this._elmt = this.render(data);
+      this.rendered = true;
+    }
+
+    if ( typeof this.postRender === 'function' )
+      this.postRender();
+
+    return this._elmt;
+  },
+
+  // /*abstract*/ postRender: function() {},
+  // /*abstract*/ preRender: function() {},
+
+  render: function(data) {
+    var elmt = gx.ui.Templates
+      .render(this._ui, data, this.template.bind(this));
+      // .store('_uiElmtObject', this);
+
+    var connectEvents = this.connectEvents;
+    if ( connectEvents && connectEvents.length > 0 )
+      this.bindThisEvents(connectEvents, this._ui);
+
+    return elmt;
+  },
+
+  /**
+   * Handle multiple rendering calls.
+   * You may want to override this mehtod.
+   *
+   */
+  renderUpdate: function(data) {
+    // TODO a good question here, do we need to unbind all the attached events
+    // now? Sure for elements which remains with references, but all these
+    // get replaced with new instances and should hold no more references.
+
+    // By default replace the current element on renderUpdate calls if
+    // it is attached to the DOM.
+    if ( this._elmt.getParent() )
+      return this.render(data).replaces(this._elmt);
+
+    return this.render(data);
+  },
+
+  bindThisEvents: function(events, from, that, to) {
+    from || (from = this);
+    that || (that = this);
+    to || (to = this);
+
+    var d, i, l, elmt, name, func;
+    for ( i = 0, l = events.length; i < l; i++ ) {
+      d = events[i].split(':');
+      elmt = from[d[0]];
+      if ( !elmt )
+        continue;
+
+      name = d[1];
+      func = that[d[2]];
+      if ( typeof func !== 'function' )
+        // (Convenience) Currying fireEvent to fire an event with the given
+        // function name if no function with that name exists.
+        elmt.addEvent(name, this.fireEvent.bind(to, d[2]));
+      else
+        elmt.addEvent(name, func.bind(to));
+    }
+  },
+
+  /*abstract*/ template: function(e, d) {
+  },
+
+  elmt: function(name) {
+    return this._ui[name];
+  },
+
+  toElement: function() {
+    if ( !this._elmt )
+      throw new Error('TemplateContainer not (properly) rendered!');
+
+    return this._elmt;
+  },
+
+  destroy: function() {
+    if ( this._elmt )
+      this._elmt.destroy();
+  }
+
+});
+
+gx.ui.Templates = new gx.ui.TemplatesClass();
+/**
  * @class gx.ui.Timebox
  * @description Creates a box for times, separating hours, minutes and seconds
  * @extends gx.ui.Container
@@ -2586,3 +3272,91 @@ gx.ui.Timebox = new Class({
  * Otherwise, read-only and disabled map to their counterparts in the HTML standard.
  */
 gx.ui.Timebox.legacyMode = true;
+/**
+ * @class gx.ui.Toggling
+ * @description Generic class to handle any css state toggling class component.
+ *
+ * @param {element|string} display The root display element
+ * @param {object} options The root display element
+ *
+ * @option {string} rootClass The class name of the root element.
+ * @option {string} stateClass The class name of the state switcher.
+ * @option {bool} initState The state to initialize the component to.
+ *
+ * @event stateActivated   Open the app menu.
+ * @event stateDeactivated Closed the app menu.
+ * @event stateChanged     Fired additionally to the above.
+ *
+ * @author Sebastian Glonner <sebastian.glonner@zeyon.net>
+ * @version 1.00
+ * @package Gx
+ * @copyright Copyright (c) 2010, Peter Haider
+ * @license http://opensource.org/licenses/gpl-license.php GNU Public License
+ */
+gx.ui.Toggling = new Class({
+	gx: 'gx.ui.Toggling',
+
+  Implements: [Options, Events],
+
+  options: {
+    'rootClass' : 'toggling',
+    'stateClass': 'active',
+    'initState' : true
+  },
+
+  _state: true,
+
+  initialize: function(display, options) {
+    this.setOptions(options);
+
+    this._ui = {};
+
+    this._ui.root = (
+      typeOf(display) === 'element' ?
+      display :
+      new Element('div')
+    );
+
+    if (this.options.rootClass)
+      this._ui.root.addClass(this.options.rootClass);
+
+    this._state = !this.options.initState;
+    this.toggle();
+  },
+
+  toggle: function() {
+    if (!this._state)
+      this.activate.apply(this, arguments);
+    else
+      this.deactivate.apply(this, arguments);
+  },
+
+  deactivate: function(dontFireEvents) {
+    this._state = false;
+    this._ui.root.removeClass(this.options.stateClass);
+
+    if ( dontFireEvents !== true ) {
+      this.fireEvent('stateDeactivated', [this]);
+      this.fireEvent('stateChanged', [this._state, this]);
+    }
+  },
+
+  activate: function(dontFireEvents) {
+    this._state = true;
+    this._ui.root.addClass(this.options.stateClass);
+    if ( dontFireEvents !== true ) {
+      this.fireEvent('stateActivated', [this]);
+      this.fireEvent('stateChanged', [this._state, this]);
+    }
+  },
+
+  getState: function() {
+    return this._state;
+  },
+
+  toElement: function() {
+    return this._ui.root;
+  }
+
+});
+
