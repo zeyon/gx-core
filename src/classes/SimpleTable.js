@@ -1,8 +1,6 @@
 'use strict';
 
 /**
- * !!!NOTE: The class name is "gx.ui.Table"!!!
- *
  * This is version 2 of the gx.ui.Table class. It simplifies the class
  * by removing the hidden thead element and do not calculate the thead sizes
  * with javascript.
@@ -23,7 +21,7 @@
  * @event click Fired when click a row.
  *
  */
-gx.ui.Table = new Class({
+gx.ui.SimpleTable = new Class({
   Implements: [Options, Events],
 
   options: {
