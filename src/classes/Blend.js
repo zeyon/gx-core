@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * @class gx.ui.Blend
  * @description Puts a blend over a defined container

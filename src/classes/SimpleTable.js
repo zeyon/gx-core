@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * This is version 2 of the gx.ui.Table class. It simplifies the class
  * by removing the hidden thead element and do not calculate the thead sizes

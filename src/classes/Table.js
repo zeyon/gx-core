@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * @class gx.ui.Table
  * @description Creates a dynamic select box, which dynamically loads the contents from a remote URL.

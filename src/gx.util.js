@@ -328,6 +328,8 @@ gx.util = {
 			case 'string':
 				return document.createTextNode(obj);
 			case 'element':
+			case 'textnode':
+			case 'whitespace':
 				return obj;
 		}
 
